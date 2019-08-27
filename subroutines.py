@@ -21,7 +21,7 @@ def plot_spectra(fig, ax2, ax3, energy, ncr, escaping):
     ax2.loglog()
     ax2.set_xlim(xlims)
     my_max = 2.0*np.max(to_plot[(energy<xlims[1]) * (energy>xlims[0])])
-    if my_max > ax2.get_ylim[1]:
+    if my_max > ax2.get_ylim()[1]:
         ax2.set_ylim(my_max/1e5,my_max)
     ax2.set_ylabel("$E^2 n(E)$", fontsize=16)
     ax2.set_xlabel("$E$", fontsize=16)
@@ -33,7 +33,7 @@ def plot_spectra(fig, ax2, ax3, energy, ncr, escaping):
     ax3.set_xlabel("$E$", fontsize=16)
     my_max = 2.0*np.max(to_plot[(energy<xlims[1]) * (energy>xlims[0])])
 
-    if my_max > ax3.get_ylim[1]:
+    if my_max > ax3.get_ylim()[1]:
         ax3.set_ylim(my_max/1e5,my_max)
     #ax3.set_ylabel("$E^2 n(E)$", fontsize=16)
     #ax3.set_ylim(1e67,1e72)
