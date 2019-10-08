@@ -42,6 +42,23 @@ def get_gamma_ray_sed(energies, ncr, Epmin = 1e9, Epmax = 1e20):
 	sed = gamma.sed(spectrum_energy, distance=3.7*u.Mpc)
 	return sed /sed.unit
 
+def get_synchrotron_spectrum(energies, ncr, B=100.0):
+	interp_func = interp1d(energies * u.eV, ncr)
+	def PD(my_energy, Emin):
+		try: 
+			f = interp_func(energies)
+		except ValueError:
+			f = 0.0
+		return (f * u.Unit('1/eV'))
+
+	ECPL = PD
+	spectrum_energy = energies * u.eV
+	nepd = len(spectrum_energy) / np.log10(spectrum_energy[-1]/spectrum_energy[0])
+	SYN = naima.models.Synchrotron(ECPL, B=B*u.uG, Epmin = Epmin * u.eV, Epmax=Epmax * u.eV, nEpd=nepd)
+	sed = SYN.sed(spectrum_energy, distance=3.7*u.Mpc)
+	return sed /sed.unit
+
+
 def get_lgamma(energies, ncr):
 	sed = get_gamma_ray_sed(energies, ncr)
 	iarg = np.argmin(energies - 1e12)
