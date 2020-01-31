@@ -9,6 +9,26 @@ import os
 import pickle
 import synchrotron
 from scipy.signal import savgol_filter
+from DELCgen import *
+from scipy.optimize import fsolve
+
+# def get_frac_elem(method):
+#     if method == "wykes":
+#         return ()
+def get_lc(lognorm_params, PSD_params, tbin, Age):
+    # Simulation params
+    # let's do everything in units of kyr
+    # run for 100 Myr (1e5 kyr) in bins of 0.1 Myr
+    #lognorm_params = (1.5,0,np.exp(1.5))
+    RedNoiseL,RandomSeed,aliasTbin = 100,12,10
+    N = Age / tbin
+
+    lc = Simulate_DE_Lightcurve(BendingPL, PSD_params,st.lognorm,lognorm_params,
+                                    RedNoiseL=RedNoiseL,aliasTbin=aliasTbin,randomSeed=RandomSeed,LClength=Age, tbin=tbin)
+
+    return (lc)
+
+
 
 def power_threshold(rigidity, v_over_c=0.1, eta=0.1):
     power = (0.1 / eta) * (rigidity / 1e19)**2 * (0.1/v_over_c) * 1e44
@@ -20,7 +40,7 @@ def max_energy(power, v_over_c=0.1, eta=0.1):
 
 def run_jet_simulation(energies, flux_scale, BETA, lc, tau_loss, 
                        frac_elem=[1.0,0.1,1e-4,3.16e-05], R0=1e9,
-	                   plot_all = False, sigma=1.5, NMAX=1000, NRES=20):
+	                   plot_all = False, sigma=1.5, NMAX=1000, NRES=20, tau_on=100.0):
     '''
     Run a jet simulation with given flux_scale and spectral index BETA.
 
@@ -39,6 +59,8 @@ def run_jet_simulation(energies, flux_scale, BETA, lc, tau_loss,
     						Injection abundances
     	plot_all			Bool
     						make plots or not
+        tau_on              Float
+                            Length of outburst in Myr
 
     Returns:
     	ncr 				5 x len(flux) x len(energies) array
@@ -49,6 +71,7 @@ def run_jet_simulation(energies, flux_scale, BETA, lc, tau_loss,
     '''
     # elemental "abundances" - really injection fractions 
     frac_elem = np.array(frac_elem)
+
     #elems = ["H", "He", "N", "Fe"]
     species = ["e", "H", "He", "N", "Fe"]
             
@@ -66,9 +89,13 @@ def run_jet_simulation(energies, flux_scale, BETA, lc, tau_loss,
 
     # arrays to store the stored and escaping CRs for every time bin and every ion
     # these get returned by the function
-    NWRITE = (NMAX // NRES) + 1
+    NWRITE = (NMAX // NRES)
     ncr_time = np.zeros( (len(species), NWRITE,len(energies)) )
     escaping_time = np.zeros( (len(species), NWRITE,len(energies)) )
+    #time_series = np.zeros( (len(species), NWRITE,len(energies)) )
+
+    # max time is in Myrs 
+    TMAX = tau_on * unit.myr
 
     # Zbar is the average charge 
     Zbar = np.sum(frac_elem * z_elem)
@@ -81,16 +108,16 @@ def run_jet_simulation(energies, flux_scale, BETA, lc, tau_loss,
     jet.init_jet(power_norm = flux_scale, rho_j = 1e-4)
 
     # this is a class to store variables over time 
-    jet_store = JetStore()
+    jet_store = JetStore(jet.rho_j)
 
     dimensions = np.zeros( (2, NWRITE, len(jet.z)) )
 
     tmax = np.max(lc.time)
     i = 0
     
-    print (len(flux))
+    # print (len(flux))
 
-    while jet.length < (200.0 * unit.kpc) and i < NMAX:
+    while jet.length < (200.0 * unit.kpc) and i < NMAX and jet.time < TMAX:
 
         if (i % NRES) == 0:
             write = True
@@ -129,10 +156,11 @@ def run_jet_simulation(energies, flux_scale, BETA, lc, tau_loss,
 
             if part == "e": #electrons 
                 if jet.set_aspect:
-                    cutoff = 1e14
-                else:
                     cutoff = 1e12
-                R0=1e6
+                else:
+                    cutoff = 1e14
+
+                R0 = 1e6
                 meanZ = 1.0
                 frac = 1.0
                 z = 1.0
@@ -195,9 +223,12 @@ def run_jet_simulation(energies, flux_scale, BETA, lc, tau_loss,
             # store the UHECR luminosity 
             if part != "e":
             	jet.lcr += np.fabs(np.trapz(energies[select] * EV2ERGS, energies[select] * escaping[select]))
-            elif write: # only compute at certain time steps 
-                #jet.lsync = synchrotron.Ptot([1e9], energies, ncr[j], jet.B)
-                jet.lsynch = 0.0
+            elif write: # only compute at certain time steps
+                select = (energies<=cutoff) 
+                jet.lsync = synchrotron.Ptot([1.4e9], energies[select], ncr[j][select], jet.B)
+                jet.l144 = synchrotron.Ptot([1.44e8], energies[select], ncr[j][select], jet.B)
+                # print ("Synchrotron÷ lum:", jet.lsync)
+                #jet.lsynch = 0.0
             
             if j == 0:
                 #lcrtot = np.trapz(energies * EV2ERGS, energies * escaping)
@@ -219,6 +250,7 @@ def run_jet_simulation(energies, flux_scale, BETA, lc, tau_loss,
             plt.close("all")
 
     # save arrays to file 
+    # np.save("array_saves/timeseries_beta{:.1f}q{:.1f}sig{:.1f}.npy".format(BETA, np.log10(flux_scale), sigma), time_series)
     np.save("array_saves/escaping_beta{:.1f}q{:.1f}sig{:.1f}.npy".format(BETA, np.log10(flux_scale), sigma), escaping_time)
     np.save("array_saves/ncr_beta{:.1f}q{:.1f}sig{:.1f}.npy".format(BETA, np.log10(flux_scale), sigma), ncr_time)
     np.save("array_saves/dim_{:.1f}q{:.1f}sig{:.1f}.npy".format(BETA, np.log10(flux_scale), sigma), dimensions)
@@ -248,7 +280,7 @@ class units:
 unit = units()
 
 class JetStore:
-    def __init__(self):
+    def __init__(self, eta):
         self.B = np.array([])
         self.energy = np.array([])
         self.volume = np.array([])
@@ -262,7 +294,9 @@ class JetStore:
         self.tsync = np.array([])
         self.tesc = np.array([])
         self.lcr = np.array([])
-        self.lsync= np.array([])
+        self.lsync = np.array([])
+        self.l144 = np.array([])
+        self.eta = eta
 
     def Update(self, jet):
         self.B = np.append(self.B, jet.B)
@@ -279,6 +313,7 @@ class JetStore:
         self.tesc = np.append(self.tesc, jet.tescape_1e19)
         self.lcr = np.append(self.lcr, jet.lcr)
         self.lsync = np.append(self.lsync, jet.lsync)
+        self.l144 = np.append(self.l144, jet.l144)
         self.jet = jet
 
     def dump_to_file(self, fname):
@@ -302,6 +337,7 @@ class JetClass:
         '''
         #self.dt = dt * unit.yr # should already be in years?
         self.lc = lightcurve 
+
 
         # lightcurve is in Kyrs, so convert
         self.interp_func = interp1d(self.lc.time * unit.kyr, self.lc.flux)
@@ -345,6 +381,20 @@ class JetClass:
         self.rho_j = rho_j
         self.power_norm = power_norm
 
+        # calculate the gammas for the time series 
+        gmm_for_interp = np.zeros_like(self.lc.flux)
+        for i in range(len(self.lc.flux)):
+            f = self.lc.flux[i] * self.power_norm
+
+            # this is power over area over rho c**3
+            X = f / self.area / self.rho_j / unit.mprot / (unit.c ** 3) 
+            func = lambda gmm: np.sqrt(1-(gmm**-2)) * ((gmm**2) - gmm) - X
+
+            # find gamma 
+            gmm_for_interp[i] = fsolve(func, 3.0)[0]
+
+        self.gamma_interp_func = interp1d(self.lc.time * unit.kyr, gmm_for_interp, kind="quadratic")
+
     def init_atmosphere(self, rho0, rcore, beta):
         '''
         initialise King profile parameters
@@ -368,9 +418,15 @@ class JetClass:
 
         return (0.0)
 
-    def equation_of_state(self, internal_energy):
-        self.gamma = 4./3.
-        return (self.gamma - 1) * internal_energy
+    def equation_of_state(self, internal_energy, type="TM"):
+        ee = internal_energy / self.density
+        # this is the Taub-Matthews equation of state
+        # see eq 4 of Mignone 2007, https://arxiv.org/pdf/0704.1679.pdf
+        pressure = (ee + 2) / (ee + 1) * self.density * ee / 3.0
+        self.gamma = (pressure / internal_energy) + 1
+        #print (self.gamma)
+
+        return pressure
 
     def get_v_advance(self):
         '''
@@ -451,9 +507,27 @@ class JetClass:
 
         return w
 
+    def v_from_gamma(gmm):
+        beta = np.sqrt(1-gmm**-2)
+        return (beta * unit.c)
+    def gamma_from_v(v):
+        beta = v/unit.c
+        return (1-np.sqrt(1-beta**2))
+
+    def jet_power(gmm, rho, area):
+        v = self.v_from_gamma(gmm)
+        Q = gmm * (gmm - 1.) * area * rho * unit.c * unit.c * v 
+        return (Q)
+
+
+
     def set_power(self, time):
-        self.power = self.interp_func(time) * self.power_norm
-        self.v_j = (2.0 * self.power / self.rho_j / unit.mprot / self.area)**(1./3.)
+        self.gmm = self.gamma_interp_func(time)
+        #self.gmm = self.gamma_interp_func(time)
+        # IMPROVE CHECK ACTUAL DENSITY USING M200 profile??
+        self.power = self.jet_power(self.gmm, self.rho_j * unit.mprot, self.area)
+        #self.power = self.interp_func(time) * self.power_norm
+        self.v_j = self.v_from_gamma(gmm)
         self.mdot = self.rho_j * self.v_j * self.area
 
     def centre_of_mass(self):

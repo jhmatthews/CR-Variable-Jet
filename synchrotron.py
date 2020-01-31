@@ -26,7 +26,7 @@ def F(x):
     """
     if x > 1e5: 
         return 0
-    return x*integrate.quad(lambda j: special.kv(5./3,j),x,np.inf)[0]
+    return x*integrate.quad(lambda j: special.kv(5./3,j),x,np.inf, limit=200)[0]
 
 def psynch(energies, nu, Bfield):
     sinalpha = 2.0 / 3.0
@@ -45,6 +45,7 @@ def psynch(energies, nu, Bfield):
 def Ptot(nus, energies, ncr, Bfield):
     pnu = np.zeros_like(nus)
     for inu, nu in enumerate(nus):
+        #print (inu)
         power = psynch(energies, nu, Bfield)
         pnu[inu] = -np.trapz(energies, ncr * power)
 

@@ -57,7 +57,7 @@ for i_sigma, SIGMA in enumerate(sigmas):
 				plt.clf()
 
 				my_lcr = np.concatenate((my_lcr, getattr(j, "lcr")))
-				my_ls = np.concatenate((my_ls, getattr(j, "lsync")))
+				my_ls = np.concatenate((my_ls, 1e9 * getattr(j, "lsync")))
 				my_length = np.concatenate((my_length, getattr(j, "length") / units[0]))
 				my_width = np.concatenate((my_width, getattr(j, "width") / units[1]))
 				power = getattr(j, "v_j")

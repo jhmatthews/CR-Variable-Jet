@@ -31,7 +31,13 @@ def get_lc(lognorm_params, PSD_params, tbin, Age):
     RedNoiseL,RandomSeed,aliasTbin = 100,12,100
     N = Age / tbin
 
-    lc = Simulate_DE_Lightcurve(BendingPL, PSD_params,st.lognorm,lognorm_params,
+    if lognorm_params[0] == 0.0: # dumb workaround 
+        lognorm_params = (1.5,0,np.exp(1.5))
+        lc = Simulate_DE_Lightcurve(BendingPL, PSD_params,st.lognorm,lognorm_params,
+                                    RedNoiseL=RedNoiseL,aliasTbin=aliasTbin,randomSeed=RandomSeed,LClength=Age, tbin=tbin)
+        lc.flux = np.ones_like(lc.flux)
+    else:
+        lc = Simulate_DE_Lightcurve(BendingPL, PSD_params,st.lognorm,lognorm_params,
                                     RedNoiseL=RedNoiseL,aliasTbin=aliasTbin,randomSeed=RandomSeed,LClength=Age, tbin=tbin)
 
     return (lc)
@@ -67,7 +73,9 @@ lc = get_lc(lognorm_params, PSD_params, tbin, Length)
 betas = [2,2.3,2.7]
 flux_scales = np.logspace(42.5,44.5,num=10)
 sigmas = np.linspace(0.5,3,num=10)
-sigmas = [2.2]
+sigmas = [0.0]
+betas = [2]
+flux_scales = [7.389e43]
 
 
 # In[10]:
@@ -112,7 +120,7 @@ for i_sigma, SIGMA in enumerate(sigmas):
             z_elem = np.array([1,1,2,7,26])
 
             movie_counter = 0
-            DELTA = 10
+            DELTA = 1
             print ("FRAMES:", len(dimensions[0,:,0])/DELTA)
             NPTS = len(dimensions[0,:,0])
 

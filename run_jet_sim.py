@@ -14,7 +14,6 @@ import astropy.units as u
 import subroutines as sub
 import os
 import simulation as sim
-import mpi4py
 
 
 # This piece of code runs a simple simulation where a CR population is injected and evolved with a variable jet. We need to define the maximum rigidity which is related to the jet power
@@ -49,18 +48,9 @@ def get_lc(lognorm_params, PSD_params, tbin, Age):
     return (lc)
 
 
-def get_tau_loss(elems, energies):
-    tau_loss = dict()
-    for i in range(len(elems)):
-        tau_loss[elems[i]] = sub.Losses(elems[i])
-        tau_loss[elems[i]].interpol(energies)
-
-    return (tau_loss)
-
-
-
 # Now we've set up the basic functions. Let's initialise our parameters for the variable jet history and initialise the tau_loss dictionary which stores the loss times for the different species (calculated using CRPropa).  
 
+# In[3]:
 
 
 # since we're in Kyr units, set up conversion
@@ -78,10 +68,13 @@ Length = int(Age / tbin)
 
 # time is in kyr, so convert to Myr
 times = np.arange ( 0, Length*tbin, tbin) 
-elems = ["H", "He", "N", "Fe"]
-energies = np.logspace(6,20.5,num=3000)
-tau_loss = get_tau_loss(elems, energies)
 
+elems = ["H", "He", "N", "Fe"]
+tau_loss = dict()
+energies = np.logspace(6,20.5,num=3000)
+for i in range(len(elems)):
+    tau_loss[elems[i]] = sub.Losses(elems[i])
+    tau_loss[elems[i]].interpol(energies)
     
 lognorm_params = (1.5,0,np.exp(1.5))
     
@@ -99,13 +92,15 @@ lc = get_lc(lognorm_params, PSD_params, tbin, Length)
 # flux_scales contains the normalisations of our jet power 
 # actually the median of the distribution, or the mean in log space.
 # betas is the spectral index of the injected spectrum 
-flux_scales = np.logspace(42.5,44.5,num=10)
-betas = np.arange(2,3,0.1)
+#flux_scales = np.logspace(43,45,num=10)
 betas = [2,2.3,2.7]
-sigmas = np.linspace(0.5,3,num=4)
+betas = [2,2.3,2.7]
+flux_scales = np.logspace(43,45,num=10)
+#flux_scales = [1e43]
 #betas = [2]
 #sigmas = [2.2]
-#flux_scales = [flux_scales[0]]
+print (flux_scales)
+sigmas = np.linspace(0.5,2,num=4)
 
 # arrays to store gamma ray and UHECR luminosities
 lgammas = np.zeros((len(sigmas), len(flux_scales), len(betas)))
@@ -179,38 +174,41 @@ for i_sigma, SIGMA in enumerate(sigmas):
 # Now let's make a movie with ffmpeg (pretty hacky this)
 
 # In[6]:
-# plt.figure(figsize=(15,4))
-# plt.suptitle("UHECR Luminosity above 60 EeV")
-# for i in range(len(betas)):
-#     plt.subplot(1,3,i+1)
-#     plt.contourf(sigmas, np.log10(flux_scales), np.log10(lcrs[:,:,i]))
-#     plt.colorbar()
-#     plt.contour(sigmas, np.log10(flux_scales), np.log10(lcrs[:,:,i]), levels=(39,), colors=("C3",), linewidths=3)
-#     plt.title(r"$\beta={:.1f}$".format(betas[i]), fontsize=16)
-#     plt.xlabel("$\sigma$", fontsize=16)
-#     if i == 0: 
-#         plt.ylabel("$\log Q$", fontsize=16)
-#     #plt.colorbar()
-# #plt.pcolormesh(sigmas, flux_scales, lcrs[:,:,1])
 
 
-# # In[ ]:
+
+plt.figure(figsize=(15,4))
+plt.suptitle("UHECR Luminosity above 60 EeV")
+for i in range(len(betas)):
+    plt.subplot(1,3,i+1)
+    plt.contourf(sigmas, np.log10(flux_scales), np.log10(lcrs[:,:,i]))
+    plt.colorbar()
+    plt.contour(sigmas, np.log10(flux_scales), np.log10(lcrs[:,:,i]), levels=(39,), colors=("C3",), linewidths=3)
+    plt.title(r"$\beta={:.1f}$".format(betas[i]), fontsize=16)
+    plt.xlabel("$\sigma$", fontsize=16)
+    if i == 0: 
+        plt.ylabel("$\log Q$", fontsize=16)
+    #plt.colorbar()
+#plt.pcolormesh(sigmas, flux_scales, lcrs[:,:,1])
 
 
-# plt.figure(figsize=(15,4))
-# plt.suptitle("Gamma-ray luminosity at 10 GeV")
-# for i in range(len(betas)):
-#     plt.subplot(1,3,i+1)
-#     plt.contourf(sigmas, np.log10(flux_scales), np.log10(lgammas[:,:,i]))
-#     plt.colorbar()
-#     plt.contour(sigmas, np.log10(flux_scales), np.log10(lgammas[:,:,i]), colors=("C3",), levels=(-12,), linewidths=3)
-#     plt.title(r"$\beta={:.1f}$".format(betas[i]), fontsize=16)
-#     plt.xlabel("$\sigma$", fontsize=16)
-#     if i == 0: 
-#         plt.ylabel("$\log Q$", fontsize=16)
+# In[ ]:
 
 
-# # In[ ]:
+plt.figure(figsize=(15,4))
+plt.suptitle("Gamma-ray luminosity at 10 GeV")
+for i in range(len(betas)):
+    plt.subplot(1,3,i+1)
+    plt.contourf(sigmas, np.log10(flux_scales), np.log10(lgammas[:,:,i]))
+    plt.colorbar()
+    plt.contour(sigmas, np.log10(flux_scales), np.log10(lgammas[:,:,i]), colors=("C3",), levels=(-12,), linewidths=3)
+    plt.title(r"$\beta={:.1f}$".format(betas[i]), fontsize=16)
+    plt.xlabel("$\sigma$", fontsize=16)
+    if i == 0: 
+        plt.ylabel("$\log Q$", fontsize=16)
+
+
+# In[ ]:
 
 
 
