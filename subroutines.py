@@ -126,6 +126,17 @@ class Losses:
     def __init__(self, elem_name):
         self.energies, self.total, self.pp, self.pd, self.ep = np.loadtxt("tau_{}.dat".format(elem_name), unpack=True)
 
-    def interpol(self, energies):
-        interp_func = interp1d(self.energies, self.total)
-        self.total_interpol = interp_func(energies)
+    def interpol(self, energies, log=True):
+        if log:
+            E = np.log10(self.energies)
+            total = np.log10(self.total)
+        else:
+            E = self.energies
+            total = self.total
+
+        interp_func = interp1d(E, total)
+
+        if log:
+            self.total_interpol = 10.0**interp_func(np.log10(energies))
+        else:
+            self.total_interpol = interp_func(energies)

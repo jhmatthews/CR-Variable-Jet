@@ -7,11 +7,73 @@ import astropy.units as u
 import subroutines as sub
 import os
 import pickle
-import synchrotron
 from scipy.signal import savgol_filter
 from DELCgen import *
 from scipy.optimize import fsolve
+from msynchro.units import unit
 import msynchro
+
+class my_powerlaw:
+    '''
+    container for generating random numbers from a powerlaw with slope < 1. 
+    For a power of form x**-n, with b>1, from xmin to xmax, the resulting
+    CDF can be shown to take the analytic form
+
+        CDF(x) = (xmin^alpha - x^alpha) / (xmin^alpha - xmax^alpha)
+
+    where alpha = 1-n. Thus, if z is a random number in range (0,1),
+    then a random variable rv can be found by inverting this expression,
+    i.e. rv = [z * (b^alpha - a^alpha) + a^alpha] ^ (1/alpha).
+
+    This is embedded in a class so an individual function can be passed without
+    additional arguments, the function rvs() generates the actual random numbers
+    similarly to scipy.stats distribution syntax.
+    '''
+    def __init__(self, n=1.2, xmin=3.5, xmax=10.0):
+        '''
+        initialise the powerlaw parameters
+        '''
+        self.n = n
+        self.alpha = 1.0 - self.n
+        self.xmin = xmin 
+        self.xmax = xmax 
+
+    def rvs(self, size=None):
+        '''
+        generate (size) random variables. if size is None, 
+        generate a single float.
+        '''
+        if size == None:
+            z = np.random.random()
+        else:
+            z = np.random.random(size=size)
+
+        term1 = z * (self.xmax ** self.alpha)
+        term2 = (1. - z) * (self.xmin ** self.alpha)
+        rv = (term1 + term2) ** (1.0 / self.alpha)
+        return (rv)
+
+def cooling_rate(gammas, B, B_CMB=3.24e-6):
+    '''
+    Get the electron cooling rate from synchrotron and inverse Compton.
+    returns CGS units. 
+
+    Parameters:
+        gammas  array-like
+                Lorentz factors of electrons 
+
+        B       float 
+                magnetic field in Gauss 
+
+    Returns:
+        Cooling rate dE/dt in erg/s
+    '''
+    Utot = (B**2 + B_CMB**2) / 8.0 / np.pi
+
+    x = 4.0 / 3.0 * unit.thomson * unit.c * Utot * gammas * gammas
+
+    return (x)
+
 
 
 def universal_profile(r, M500, H0=70.0):
@@ -119,7 +181,7 @@ def get_source_term(energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j):
         R0 = 1e6
         meanZ = frac = z = 1.0
         rigidities = energies / z
-        #Q0 = jet.epsilon * jet.power / EV2ERGS
+        Qnorm = Q0 * (1.0 - jet.kappa)
     else:
         cutoff = Rmax
         R0 = 1e9
@@ -128,7 +190,7 @@ def get_source_term(energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j):
         z = z_elem[j-1]
         rigidities = energies / z
 
-        #Q0 = jet.kappa * jet.epsilon * jet.power / EV2ERGS
+        Q0 = jet.kappa * Q0
 
     # normalisation of cosmic ray distribution depends on BETA 
     if BETA == 2:
@@ -152,7 +214,7 @@ def get_source_term(energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j):
 def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss, 
                        frac_elem=[1.0,0.1,1e-4,3.16e-05], R0=1e9,
 	                   plot_all = False, sigma=1.5, NMAX=1000, NRES=20, tau_on=100.0, 
-                       seed=0):
+                       seed=0, save_arrays=True):
     '''
     Run a jet simulation with given flux_scale and spectral index BETA.
 
@@ -184,11 +246,18 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     '''
 
     # create energy bins 
-    energy_edges = np.logspace(energy_params[0], energy_params[1], energy_params[2] + 1)
-    energies = 0.5 * (energy_edges[1:] + energy_edges[:-1])
-    print (energies)
-    import sys
-    sys.exit()
+    elec_e_edges = np.logspace(7, 14, energy_params[2] + 1)
+    #elec_e_edges = np.logspace(energy_params[0], energy_params[1], energy_params[2] + 1)
+    elec_energies = 0.5 * (elec_e_edges[1:] + elec_e_edges[:-1])
+
+    prot_e_edges = np.logspace(14, 21, energy_params[2] + 1)
+    prot_energies = 0.5 * (prot_e_edges[1:] + prot_e_edges[:-1])
+
+    # number of energy bins
+    N_energies = energy_params[2]
+    # print (energies)
+    # import sys
+    # sys.exit()
 
     # elemental "abundances" - really injection fractions 
     frac_elem = np.array(frac_elem)
@@ -203,7 +272,7 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     z_elem = np.array([1,2,7,26])
 
     # array to store the current CR spectrum for each ion
-    ncr = np.zeros( (len(species),len(energies)) )
+    ncr = np.zeros( (len(species),N_energies) )
 
     # set up flux array
     flux = lc.flux * flux_scale 
@@ -211,8 +280,8 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     # arrays to store the stored and escaping CRs for every time bin and every ion
     # these get returned by the function
     NWRITE = (NMAX // NRES)
-    ncr_time = np.zeros( (len(species), NWRITE,len(energies)) )
-    escaping_time = np.zeros( (len(species), NWRITE,len(energies)) )
+    ncr_time = np.zeros( (len(species), NWRITE, N_energies) )
+    escaping_time = np.zeros( (len(species), NWRITE, N_energies) )
     #time_series = np.zeros( (len(species), NWRITE,len(energies)) )
 
     # max time is in Myrs 
@@ -229,8 +298,8 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     jet.init_jet(power_norm = flux_scale, eta = 1e-5, f_edd_norm = 1e-4)
 
     # this is a class to store variables over time 
-    jet_store = JetStore(jet.rho_j, energy_edges)
-    jet.epsilon = 0.1
+    jet_store = JetStore(jet.rho_j, prot_e_edges, elec_e_edges)
+    #jet.epsilon = 0.1
 
     dimensions = np.zeros( (2, NWRITE, len(jet.z)) )
 
@@ -252,18 +321,19 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
         #print (i, jet.length/200.0/unit.kpc, jet.time/TMAX)
 
         
-
         try:
             ireturn = jet.UpdateSolution()
         except ValueError:
             ireturn = -1
-            print ("ValueError from jet: time is {}".format(jet.time))
+            print ("ValueError from jet UpdateSolution: time {}".format(jet.time))
 
         if ireturn < 0:
             failure = True
             break
+
+        # zero CR luminosities before looping over ion species 
         jet.lcr = 0.0
-        jet.sync = 0.0
+        jet.lcr_8EeV = 0.0
 
         #print (i, jet.length, NMAX, len(jet_store.time))
         # power = jet.power
@@ -271,8 +341,8 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
         # get the maximum rigidity from the power requirement
         Rmax = max_energy(jet.power, v_over_c=jet.v_j)
             
-        # put 10% of jet energy into CRs, store in eV units 
-        Q0 = 0.1 * jet.power / EV2ERGS
+        # put a percentage of jet energy into CRs, store in eV units 
+        Q0 = jet.epsilon * jet.f_work * jet.power / EV2ERGS
 
         # get the time step - IMPROVE 
         #delta_t = lc.tbin * 1000.0 * YR
@@ -282,23 +352,33 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
 
         for j, part in enumerate(species):
 
-            # this could be improved but at least it's in a subroutine 
-            source_term = get_source_term (energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j)
+             
             ncr_old = ncr[j]
         
             if part == "e":
-                rigidities = energies
-                cooling_time = (1e9 / rigidities) * jet.tsync_gev
+                energies = elec_energies
+                energy_edges = elec_e_edges 
+                cooling_time = (1e9 / energies) * jet.tsync_gev
                 # cooling = ncr[j] / cooling_time
-                tau_total = cooling_time
+                # tau_total = cooling_time
+                tau_total = 0.0
                 escaping = np.zeros_like(ncr[j])
-                energy_loss_rate = 0.0
+
+                # get the Lorentz factors of electrons 
+                gammas = (energy_edges * unit.ev) / unit.melec_csq
+                energy_loss_rate = cooling_rate(gammas, jet.B) / unit.ev
+                cool_approx = energies / cooling_time
+                tau_total = 0.0
+
+                #print ("Losses:", energy_loss_rate, cool_approx)
             else:
-                # number of escaping CRs 
+                # number of escaping CRs
+                energies = prot_energies
+                energy_edges = prot_e_edges 
                 rigidities = energies / z_elem[j-1]
                 escape_time = (1e19 / rigidities) * jet.tescape_1e19
                 escape_recip = 1.0 / escape_time
-                cooling_recip = 1.0 / (tau_loss[part].total_interpol *  1e6 * YR)
+                cooling_recip = 1.0 / (tau_loss[part].total_interpol * unit.myr)
                 tau_total = 1.0 / (cooling_recip + escape_recip)
                 energy_loss_rate = 0.0
                 escaping = escape_recip * ncr_old
@@ -307,12 +387,20 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
                 # loss rate 
                 #cooling =  ncr[j] / (tau_loss[part].total_interpol *  1e6 * YR)
 
+            #print (energy_loss_rate, jet.cool_adiabatic / unit.ev)
+            energy_loss_rate += jet.cool_adiabatic * energy_edges
+
+            #print ("Adiab:", jet.cool_adiabatic / unit.ev, energy_loss_rate)
+            # this could be improved but at least it's in a subroutine
+            source_term = get_source_term (energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j)
+            
             # evolve the particle distribution 
             ncr[j] = msynchro.evolve.particle_evolve(energy_edges, energy_loss_rate, tau_total, source_term, ncr[j], delta_t)
-            print (np.max(source_term), np.max(energy_loss_rate), delta_t, np.max(ncr[j]/tau_total))
+            #print (np.max(source_term), np.max(energy_loss_rate), delta_t, np.max(ncr[j]/tau_total))
 
             # this is dn/dt for each energy 
-            #change = (source_term - escaping - cooling) * delta_t
+            #escaping = ncr[j]/tau_total
+            #change = (source_term - escaping) * delta_t
 
             # change the ncr distribution
             #ncr[j] += change
@@ -327,11 +415,14 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
                 escaping_time[j,iwrite,:] = escaping
 
             # cutoff for UHECRs (60 EeV)
-            select = (energies > 6e19)
+            select_60eV = (energies > 6e19)
+            select_8eV = (energies > 8e18)
 
             # store the UHECR luminosity or the synchrotron luminosity
             if part != "e":
-            	jet.lcr += np.fabs(np.trapz(energies[select] * EV2ERGS, energies[select] * escaping[select]))
+                jet.lcr += np.fabs(np.trapz(energies[select_60eV] * unit.ev, energies[select_60eV] * escaping[select_60eV]))
+                jet.lcr_8EeV += np.fabs(np.trapz(energies[select_8eV] * unit.ev, energies[select_8eV] * escaping[select_8eV]))
+
             elif write: # only compute at certain time steps
                 select = (energies <= 1e14) 
                 jet.lsync = 0.0
@@ -343,7 +434,7 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
             
             if j == 0:
                 #lcrtot = np.trapz(energies * EV2ERGS, energies * escaping)
-                all_lobe = np.trapz(energies * EV2ERGS, energies * ncr[j])
+                all_lobe = np.trapz(energies * unit.ev, energies * ncr[j])
 
         if write: 
             jet_store.Update(jet)
@@ -352,50 +443,54 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
 
         i += 1
 
+    # print out some info to user 
     if failure: 
         print ("Failure for for Q {} beta {} sigma {}".format(np.log10(flux_scale), BETA, sigma))
     else:
         print ("Finished sim for Q {} beta {} sigma {}".format(np.log10(flux_scale), BETA, sigma))
+    
     print ("Final iterators: {}/{}, {}/{}Myr, {}/{}kpc".format(i, NMAX, jet.time/unit.myr, TMAX/unit.myr, jet.length/unit.kpc, LMAX))
 
-    # save arrays to file 
-    # np.save("array_saves/timeseries_beta{:.1f}q{:.1f}sig{:.1f}.npy".format(BETA, np.log10(flux_scale), sigma), time_series)
-    np.save("array_saves/escaping_beta{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, np.log10(flux_scale), sigma, seed), escaping_time)
-    np.save("array_saves/ncr_beta{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, np.log10(flux_scale), sigma, seed), ncr_time)
-    np.save("array_saves/dim_{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, np.log10(flux_scale), sigma, seed), dimensions)
+    if save_arrays:
+        # save arrays to file 
+        np.save("array_saves/escaping_beta{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, np.log10(flux_scale), sigma, seed), escaping_time)
+        np.save("array_saves/ncr_beta{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, np.log10(flux_scale), sigma, seed), ncr_time)
+        np.save("array_saves/dim_{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, np.log10(flux_scale), sigma, seed), dimensions)
 
+    # store the jet class whatever
     fname_store = "array_saves/jetstore_{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, np.log10(flux_scale), sigma, seed)
     jet_store.dump_to_file(fname_store)
 
 
     return (ncr_time, escaping_time, lcr)
 
-class units:
-    def __init__(self):
-        self.kpc = 3.086e21
-        self.pc = 3.086e18
-        self.c = 2.997925e10
-        self.yr = 3.1556925e7
-        self.myr = 3.1556925e13
-        self.kyr = 3.1556925e10
-        self.radian = 57.29577951308232
-        self.msol = 1.989e33
-        self.mprot = 1.672661e-24
-        self.ev = 1.602192e-12
-        self.kb = 1.38062e-16
-        self.h = 6.6262e-27
-        self.g = 6.670e-8
+# class units:
+#     def __init__(self):
+#         self.kpc = 3.086e21
+#         self.pc = 3.086e18
+#         self.c = 2.997925e10
+#         self.yr = 3.1556925e7
+#         self.myr = 3.1556925e13
+#         self.kyr = 3.1556925e10
+#         self.radian = 57.29577951308232
+#         self.msol = 1.989e33
+#         self.mprot = 1.672661e-24
+#         self.ev = 1.602192e-12
+#         self.kb = 1.38062e-16
+#         self.h = 6.6262e-27
+#         self.g = 6.670e-8
 
-# class to use for units
-unit = units()
+# # class to use for units
+# unit = units()
 
 class JetStore:
-    def __init__(self, eta, energy_edges):
+    def __init__(self, eta, prot_e_edges, elec_e_edges):
         self.B = np.array([])
         self.energy = np.array([])
         self.volume = np.array([])
         self.R_escape = np.array([])
         self.density = np.array([])
+        self.pressure = np.array([])
         self.v_j= np.array([])
         self.v_advance = np.array([]) 
         self.time = np.array([])
@@ -404,10 +499,12 @@ class JetStore:
         self.tsync = np.array([])
         self.tesc = np.array([])
         self.lcr = np.array([])
+        self.lcr_8EeV = np.array([])
         self.lsync = np.array([])
         self.l144 = np.array([])
         self.eta = eta
-        self.energy_edges = energy_edges
+        self.prot_e_edges = prot_e_edges 
+        self.elec_e_edges = elec_e_edges 
         self.power = np.array([])
         self.gmm = np.array([])
         self.P0 = np.array([])
@@ -418,6 +515,7 @@ class JetStore:
         self.volume = np.append(self.volume, jet.volume)
         self.R_escape = np.append(self.R_escape, jet.R_escape)
         self.density = np.append(self.density, jet.density)
+        self.pressure = np.append(self.pressure, jet.pressure_uniform)
         self.v_j = np.append(self.v_j, jet.v_j)
         self.v_advance = np.append(self.v_advance, jet.v_advance)
         self.time = np.append(self.time, jet.time)
@@ -426,6 +524,7 @@ class JetStore:
         self.tsync = np.append(self.tsync, jet.tsync_gev)
         self.tesc = np.append(self.tesc, jet.tescape_1e19)
         self.lcr = np.append(self.lcr, jet.lcr)
+        self.lcr_8EeV = np.append(self.lcr_8EeV, jet.lcr_8EeV)
         self.lsync = np.append(self.lsync, jet.lsync)
         self.l144 = np.append(self.l144, jet.l144)
         self.power = np.append(self.power, jet.power)
@@ -451,7 +550,7 @@ class JetClass:
         Initialise the jet class instance. set up the number of cells in
         the z direction, give it a lightcurve class, and set the time step
 
-        IMPROVE TO USE KWARGS and defaults
+        IMPROVE TO USE KWARGS and defaults?
         '''
         #self.dt = dt * unit.yr # should already be in years?
         self.lc = lightcurve 
@@ -459,13 +558,15 @@ class JetClass:
 
         # lightcurve is in Kyrs, so convert
         # also set a bunch of defaults. 
-        # IMPROVE: organise this a bit 
+        # IMPROVE: organise this a bit better 
         self.interp_func = interp1d(self.lc.time * unit.kyr, self.lc.flux)
         self.z = np.linspace(0,zmax,nz) * unit.kpc 
         self.pressure = np.zeros_like(self.z)
         self.energy = 0.0
         self.density = 0.0
+        self.mass = 0.0
         self.lcr = 0.0
+        self.lcr_8EeV = 0.0
         self.set_aspect = True
         self.length = 0.0
         self.rho_j = 1e-4
@@ -478,10 +579,9 @@ class JetClass:
         self.dz = zmax * unit.kpc / (nz  - 1)
         self.time = 0.0
         self.gamma = 4./3.
-        self.zeta = 0.5
+        self.zeta = 1.0
         self.kappa = 0.5
         #self.eta_b = 0.3
-        self.efficiency_factor = 0.5
         self.R_escape = 0.0
         self.half_width = 0.0
         self.lsync = 0.0
@@ -494,6 +594,9 @@ class JetClass:
         self.rel_advance = True
         self.debug = debug
         self.epsilon = 0.3
+        self.f_work = 0.5    
+        self.E_B = 0.0
+        self.power_available = self.f_work * self.power 
 
 
         # set profiles up 
@@ -518,13 +621,13 @@ class JetClass:
         gyrofactor = 1.0
         tesc_ref = gyrofactor * 10.0 * unit.myr * (self.R_escape / 100.0 / unit.kpc)**2 
         self.tescape_1e19 = tesc_ref * (self.B / 1e-6)
+        # self.tsync_Ghz
 
 
     def sound_speed(self, t, gamma=(5./3.), mu=1.0):
         p_over_rho = unit.kb * t / mu / unit.mprot 
         cs = np.sqrt(p_over_rho * gamma)
         return (cs)
-
 
 
     def init_jet(self, **kwargs):
@@ -579,7 +682,7 @@ class JetClass:
 
     def init_atmosphere(self, rho0, rcore, beta):
         '''
-        initialise King profile parameters
+        Initialise King (beta) profile parameters
         '''
         self.beta = beta
         self.rcore = rcore * unit.kpc 
@@ -617,15 +720,19 @@ class JetClass:
 
         return (0.0)
 
-    def equation_of_state(self, internal_energy, type="TM"):
+    def equation_of_state(self, internal_energy, eos_type="Ideal"):
         ee = internal_energy / self.density
-        # this is the Taub-Matthews equation of state
-        # see eq 4 of Mignone 2007, https://arxiv.org/pdf/0704.1679.pdf
-        pressure = (ee + 2) / (ee + 1) * self.density * ee / 3.0
-        self.gamma = (pressure / internal_energy) + 1
-        #print (self.gamma)
 
-        return pressure
+        if eos_type == "TM":
+            # this is the Taub-Matthews equation of state
+            # see eq 4 of Mignone 2007, https://arxiv.org/pdf/0704.1679.pdf
+            pressure = (ee + 2) / (ee + 1) * self.density * ee / 3.0
+            self.gamma = (pressure / internal_energy) + 1
+        elif eos_type == "Ideal":
+            self.gamma = 4./3.
+            pressure = (self.gamma - 1.0) * internal_energy 
+        #print (self.gamma)
+        return (pressure)
 
     def get_v_advance(self):
         '''
@@ -720,8 +827,11 @@ class JetClass:
         return (0) 
 
     def initial_width(self, z, L):
-        w = L / np.pi * np.arccos(np.sqrt(z/L))
-        w[(z>L)] = 0.0
+        #w = L / 2.0
+        w = np.zeros_like(z)
+        w[0] = L/2.0
+        #w = L / np.pi * np.arccos(np.sqrt(z/L))
+        #w[(z>L)] = 0.0
 
         return w
 
@@ -750,7 +860,8 @@ class JetClass:
         self.power = self.jet_power(self.gmm, self.rho_j * unit.mprot, self.area)
         #self.power = self.interp_func(time) * self.power_norm
         self.v_j = self.v_from_gamma(self.gmm)
-        self.mdot = self.gmm * self.rho_j * self.v_j * self.area
+        self.mdot = self.gmm * self.rho_j * self.v_j * self.area * unit.mprot
+        self.power_available = self.f_work * self.power
 
     def centre_of_mass(self):
         '''
@@ -807,8 +918,8 @@ class JetClass:
         update the jet solution
         '''
         # get velocities 
-        if self.length > (2.0  * self.dz):
-            self.set_power(self.time)
+        #if self.length > (2.0  * self.dz):
+        self.set_power(self.time)
         self.get_v_advance()
 
         #print (self.v_advance/C)
@@ -825,8 +936,10 @@ class JetClass:
 
         # evolve width 
         self.length += self.v_advance * self.dt
-        self.energy += self.efficiency_factor * self.power * self.dt 
-        self.density += self.mdot * self.dt
+        delta_energy = self.power_available * self.dt 
+        self.energy += delta_energy 
+        self.mass += self.mdot * self.dt
+        self.E_B += (1.0 - self.kappa) * self.zeta * self.epsilon * delta_energy
 
         # decide whether we need to artifically set the aspect ratio or not
         if self.set_aspect:
@@ -836,6 +949,7 @@ class JetClass:
             self.width = self.initial_width(self.z, self.length)
             self.set_aspect = False
             self.i = 1
+            self.volume = 0.0
         else:
             self.width += self.v_perp * self.dt
             self.width = savgol_filter(self.width, 5,3)
@@ -854,17 +968,27 @@ class JetClass:
             # find the maximum width, divide by 2, then also multiply by two to get total width
             self.half_width = np.max(self.width[select_lobe]) 
 
+
         # get the volume by integration 
+        v_old = self.volume
         self.volume = np.trapz(np.pi * (self.width[select_lobe]**2), x = self.z[select_lobe])
-        #self.volume = 4.0 / 3.0 * np.pi * self.width[0] * self.width[0] * self.length
-        #print ("Vol:", self.volume, self.width, self.z)
+        dVdt = (self.volume - v_old) / self.dt
+        self.density = self.mass / self.volume
+
+        # work out magnetic field by finding B field internal energy 
+        self.B = np.sqrt(self.E_B / self.volume * 8.0 * np.pi)
+
+        # get 1/3 * (1/V) * dV/dt, which is adiabatic cooling rate / E
+        # this will be used for both CRs and electrons 
+        self.cool_adiabatic = 1/3 * (1.0 / self.volume) * dVdt
 
         self.internal = (self.energy / self.volume)
         self.pressure_uniform = self.equation_of_state(self.internal)
         self.pressure_array = self.set_lobe_pressure()
 
         # get magnetic field strength from equation ??
-        self.B = np.sqrt(3.0 * self.pressure_uniform * self.zeta * 8.0 * np.pi / (1.0 + self.zeta + self.kappa))
+        #self.B 
+        #self.B = np.sqrt(3.0 * self.pressure_uniform * self.zeta * 8.0 * np.pi / (1.0 + self.zeta + self.kappa))
         
         # advance time 
         self.time += self.dt
@@ -880,7 +1004,8 @@ class JetClass:
         #     import sys
         #     sys.exit()
         if np.isnan(self.volume):
-            print ("Error: NAN volume exit!")
+            print ("Error: Volume is NAN, exiting!")
+            print (self.pressure_uniform, self.internal, self.energy, self.B)
 
             import sys
             sys.exit()
