@@ -2,12 +2,12 @@
 # coding: utf-8
 import scipy.stats as st
 import matplotlib.pyplot as plt 
-from constants import *
 from scipy.interpolate import interp1d
 import naima
 import astropy.units as u
 import subroutines as sub
 import os
+from msynchro.units import unit 
 import simulation as sim
 from mpi4py import MPI
 from itertools import product
@@ -21,7 +21,6 @@ def write_variable(filename, variable_dict):
     filename.write("\n")
 
     for i in range(len(variable[keys[0]])):
-        filename.write()
         for k in keys:
             filename.write("{} ".format(variable[k][i]))
         filename.write("\n")
@@ -104,7 +103,6 @@ params = open("params_{}.txt".format(my_rank), "w")
 
 write_variable(params, variable)
 params.close()
-sys.exit()
 # set the atmosphere
 atmos = "UPP"
 
@@ -182,10 +180,10 @@ for i in range(my_nmin, my_nmax):
 
     # get approximate gamma ray luminosity around 10 GeV
     select = (energies > 1e10) * (energies < 2e10)
-    my_lgamma = np.fabs(np.trapz(energies[select] * EV2ERGS, energies[select]*ncr[0,-1,:][select]))
+    my_lgamma = np.fabs(np.trapz(energies[select] *unit.ev, energies[select]*ncr[0,-1,:][select]))
 
     # distance to Cen A
-    distance = 3.7 * PARSEC * 1e6
+    distance = 3.7 * 3.086e18 * 1e6
     # lgammas[i_sigma,i_flux,i_beta] = my_lgamma * 1e-4 * 4.5e-26 * 0.5 * C / 4.0 / PI / distance / distance
     
     select = (energies > 6e19)
@@ -193,7 +191,7 @@ for i in range(my_nmin, my_nmax):
     # store the UHECR luminosity 
     # lcr = np.fabs(np.trapz(energies[select] * EV2ERGS, energies[select] * escaping[select]))
     # lcrs[i_sigma,i_flux,i_beta] = lcr
-    lg = my_lgamma * 1e-4 * 4.5e-26 * 0.5 * C / 4.0 / PI / distance / distance
+    lg = my_lgamma * 1e-4 * 4.5e-26 * 0.5 * unit.c / 4.0 / np.pi / distance / distance
     
     print ("sigma {:.1f} BETA {:.1f} median lum {:8.4e} mean lum {:8.4e} UHECR LUM: {:8.4e} {:8.4e}"
            .format(SIGMA, BETA, np.median(flux), np.mean(flux), lcr, lg))
