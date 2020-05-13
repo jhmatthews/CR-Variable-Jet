@@ -3,7 +3,6 @@
 import scipy.stats as st
 import matplotlib.pyplot as plt 
 from scipy.interpolate import interp1d
-import naima
 import astropy.units as u
 import subroutines as sub
 import os
