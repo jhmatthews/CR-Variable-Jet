@@ -67,16 +67,12 @@ for i in range(len(elems)):
 # betas is the spectral index of the injected spectrum 
 #flux_scales = np.logspace(43,45,num=10)
 variable = dict()
-variable["betas"] = [2,2.3,2.7]
-variable["flux_scales"] = np.logspace(43,45,num=11)
-variable["sigmas"] = np.linspace(0,2,num=5)
-variable["betas"] = [2.3]
-variable["flux_scales"] = np.logspace(43,45,num=11)
+
+variable["betas"] = [2]
 variable["flux_scales"] = [1e44]
-print (variable["flux_scales"])
+variable["sigmas"] = [1.5]
 variable["seeds"] = [12,38,100,200]
 variable["seeds"] = [38]
-variable["sigmas"] = [1.5]
 indices = list(variable.values())
 parameter_keys = variable.keys()
 parameter_values = list(product(*indices))
@@ -143,6 +139,7 @@ tinit = time_init
 for i in range(my_nmin, my_nmax):
     
     BETA, flux_scale, SIGMA, seed = parameter_values[i]
+    print (seed)
 
     # get the lognormal parameters
     #mu = np.log(flux_scale)
@@ -157,8 +154,8 @@ for i in range(my_nmin, my_nmax):
     # this is roughly solar, but should probably be top heavy since it is easier to inject heavy ions, generally
     z = np.array([1,2,7,26])
     a = np.array([1,4,14,56])
-    frac_elem = np.array([1.0,0.1,1e-4,3.16e-05]) * z * z / a
-
+    frac_elem = np.array([1.0,0.1,1e-4,3.16e-05]) * z * z * (a ** (BETA-2))
+    # frac_elem = np.array([1.0,0.1,1e-4,3.16e-05]) * z * z / a
     print (seed)
 
     # NMAX 40,000 should limit array saves to under a GB in size

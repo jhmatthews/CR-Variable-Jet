@@ -14,6 +14,19 @@ from itertools import product
 import time
 from DELCgen import *
 
+def write_variable(filename, variable_dict):
+    keys =  list(variable.keys())
+    filename.write("Run")
+    for k in keys: filename.write("{} ".format(k))
+    filename.write("\n")
+
+    for i in range(len(variable[keys[0]])):
+        filename.write()
+        for k in keys:
+            filename.write("{} ".format(variable[k][i]))
+        filename.write("\n")
+
+
 
 
 # let's do this in parallel 
@@ -77,12 +90,21 @@ variable["flux_scales"] = powerlaw.rvs(size = NSIMS)
 variable["sigmas"] = np.random.random(size = NSIMS) * 3
 variable["seeds"] = np.random.randint(0, 100.0 * NSIMS, size = NSIMS)
 
+# generate a random lifetime in log space
+variable["lifetime"] = 10.0 ** (np.random.random(size=NSIMS) * 2.5)
+variable["runid"] = np.arange(0,NSIMS,1)
+
+
 #indices = list(variable.values())
 #parameter_keys = variable.keys()
 #parameter_values = list(product(*indices))
 
 logfile = open("logfile_{}.txt".format(my_rank), "w")
+params = open("params_{}.txt".format(my_rank), "w")
 
+write_variable(params, variable)
+params.close()
+sys.exit()
 # set the atmosphere
 atmos = "UPP"
 
@@ -132,6 +154,8 @@ for i in range(my_nmin, my_nmax):
     flux_scale = variable["flux_scales"][i]
     SIGMA = variable["sigmas"][i]
     seed = variable["seeds"][i]
+    tau_on = variable["lifetime"][i]
+    savename = "run{}".format(variable["runid"][i])
 
     # get the lognormal parameters
     #mu = np.log(flux_scale)
@@ -146,14 +170,15 @@ for i in range(my_nmin, my_nmax):
     # this is roughly solar, but should probably be top heavy since it is easier to inject heavy ions, generally
     z = np.array([1,2,7,26])
     a = np.array([1,4,14,56])
-    frac_elem = np.array([1.0,0.1,1e-4,3.16e-05]) * z * z / a
+    frac_elem = np.array([1.0,0.1,1e-4,3.16e-05]) * z * z * (a ** (BETA-2))
 
-    print (seed)
 
     # NMAX 40,000 should limit array saves to under a GB in size
     ncr, escaping, lcr = sim.run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
                                                 frac_elem=frac_elem, plot_all=False, 
-                                                sigma=SIGMA, R0=1e9, NRES = 20, NMAX=30000, seed=seed)
+                                                sigma=SIGMA, R0=1e9, NRES = 20, NMAX=100000, 
+                                                seed=seed, tau_on=tau_on, save_arrays=False,
+                                                savename=savename)
 
     # get approximate gamma ray luminosity around 10 GeV
     select = (energies > 1e10) * (energies < 2e10)

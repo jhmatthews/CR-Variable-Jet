@@ -85,12 +85,13 @@ def three_panel_cr(time, energies, ncr, escaping, folder):
 	ncr_max = np.max(ncr_tot_all[energies>=1e17])
 	escape_max = np.max(escape_tot_all[energies>=1e17])
 	ion_labels = ["Protons", "He", "N", "Fe"]
+	logE = np.log10(energies)
 	for i in range(1,5):
-		ax1.loglog(energies, energies * energies * ncr_tot[i]/ncr_max, label=ion_labels[i-1])
-		ax2.loglog(energies, energies * energies * escape_tot[i]/escape_max, label=ion_labels[i-1])	
+		ax1.plot(logE, energies * energies * ncr_tot[i]/ncr_max, label=ion_labels[i-1])
+		ax2.plot(logE, energies * energies * escape_tot[i]/escape_max, label=ion_labels[i-1])	
 
-	ax1.loglog(energies, ncr_tot_all/ncr_max, c="k", lw=4, label="Total", alpha=0.7)
-	ax2.loglog(energies, escape_tot_all/escape_max, c="k", lw=4, label="Total", alpha=0.7)
+	ax1.plot(logE, ncr_tot_all/ncr_max, c="k", lw=4, label="Total", alpha=0.7)
+	ax2.plot(logE, escape_tot_all/escape_max, c="k", lw=4, label="Total", alpha=0.7)
 	ax1.legend()
 	ax2.legend()
 	ax1.set_title("Inside lobe, time averaged")
@@ -107,22 +108,20 @@ def three_panel_cr(time, energies, ncr, escaping, folder):
 		else:
 			labels = (None, None)
 
-		ax3.loglog(energies, ncr_plot/np.max(ncr_plot[energies>=1e17]), c="C0", alpha=0.5, zorder=2, label=labels[0])
+		ax3.plot(logE, ncr_plot/np.max(ncr_plot[energies>=1e17]), c="C0", alpha=0.5, zorder=2, label=labels[0])
 		escaping_plot = energies * energies * escape_time_sum[t]
-		ax3.loglog(energies, escaping_plot/np.max(escaping_plot[energies>=1e17]), c="C1", alpha=0.5, zorder=1, label=labels[1])
+		ax3.plot(logE, escaping_plot/np.max(escaping_plot[energies>=1e17]), c="C1", alpha=0.5, zorder=1, label=labels[1])
 
 	ax3.legend()
 	ax3.set_title("Spectra at random times")
-	ax1.set_xlim(1e17,3e20)
-	ax2.set_xlim(1e17,3e20)
-	ax3.set_xlim(1e17,3e20)
-	ax1.set_ylim(1e-4,2)
-	ax2.set_ylim(1e-4,2)
-	ax3.set_ylim(1e-4,2)
+	for ax in [ax1,ax2,ax3]:
+		ax.set_xlim(17,20.5)
+		ax.set_ylim(1e-3,2)
+		ax.set_yscale("log")
 	ax2.set_yticklabels([])
 	ax3.set_yticklabels([])
 	ax1.set_ylabel("$E^2 dN/dE$ (Normalised)", fontsize=18)
-	ax2.set_xlabel("E (eV)", fontsize=18)
+	ax2.set_xlabel(r"$\log[E ({\rm eV})]$", fontsize=18)
 	plt.subplots_adjust(hspace=0.05,wspace=0.05,right=0.98,top=0.94, left=0.08, bottom=0.13)
 	fig.savefig("{}/cr-3panel.png".format(folder), dpi=200)
 
@@ -212,7 +211,7 @@ def standard_plot(j, folder):
 
 
 def luminosities_plot(j, folder):
-	plt.figure(figsize=(7,5))
+	plt.figure(figsize=(9,5))
 	plt.plot(j.time/unit.myr, np.log10(j.power), label=r"$\log(Q_{j})$", c="k", alpha=0.8)
 	plt.plot(j.time/unit.myr, np.log10(j.lcr), label=r"$\log(L_{\mathrm{cr,60EeV}})$", c="C1")
 	plt.plot(j.time/unit.myr, np.log10(j.lcr_8EeV), label=r"$\log(L_{\mathrm{cr,8EeV}})$", c="C3")
@@ -237,7 +236,7 @@ plt.rcParams['font.serif']=['cm']
 plt.rcParams['font.family']='serif'	
 plt.rcParams["text.usetex"] = "True"
 plt.rcParams["lines.linewidth"] = 3
-plt.rcParams["axes.linewidth"] = 1.5
+plt.rcParams["axes.linewidth"] = 2
 plt.rcParams["xtick.major.width"] = 1.5
 plt.rcParams["ytick.major.width"] = 1.5
 

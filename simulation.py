@@ -169,14 +169,15 @@ def max_energy(power, v_over_c=0.1, eta=0.1):
 
 def get_source_term(energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j):
 
+    Eichmann = False
     # Zbar is the average charge 
     Zbar = np.sum(frac_elem * z_elem)
 
     if part == "e": #electrons 
         if jet.set_aspect:
-            cutoff = 1e12
+            Rcutoff = 1e12
         else:
-            cutoff = 1e14
+            Rcutoff = 1e14
 
         R0 = 1e6
         meanZ = frac = z = 1.0
@@ -188,25 +189,36 @@ def get_source_term(energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j):
         meanZ = Zbar
         frac = frac_elem[j-1]
         z = z_elem[j-1]
-        rigidities = energies / z
 
         Q0 = jet.kappa * Q0
 
+    rigidities = energies / z
+    E0 = R0 * z
+    Emax = Rmax * z
+
     # normalisation of cosmic ray distribution depends on BETA 
     if BETA == 2:
-        dynamic = 1.0/(np.log(cutoff/R0))
+        dynamic = 1.0/(np.log(Rmax/R0))
     else:
-        dynamic = (2 - BETA) / ((cutoff/R0)**(2-BETA)-1.0)
+        dynamic = (2 - BETA) / ((Rmax/R0)**(2-BETA)-1.0)
 
-    # need to get things in the right units
-    nu_i = frac / z / R0**2 * dynamic / meanZ
+    if Eichmann:
+        # need to get things in the right units
+        nu_i = frac / z / R0**2 * dynamic / meanZ
 
-    # add_on is the injection term 
-    add_on = nu_i * Q0 * ((rigidities / R0)**-BETA)
+        # add_on is the injection term 
+        add_on = nu_i * Q0 * ((rigidities / R0)**-BETA)
 
-    # beyond the cutoff we set injected term to 0
-    add_on[(rigidities>=cutoff)] = 0.0
-    add_on[(rigidities<=R0)] = 0.0
+        # beyond the cutoff we set injected term to 0
+        add_on[(rigidities>=Rmax)] = 0.0
+        add_on[(rigidities<=R0)] = 0.0
+
+    else:
+        nu_i = frac * dynamic 
+        add_on = nu_i * Q0 * (energies**-BETA)
+        # beyond the cutoff we set injected term to 0
+        add_on[(energies>=Emax)] = 0.0
+        add_on[(energies<=E0)] = 0.0
 
     return (add_on)
 
@@ -214,7 +226,7 @@ def get_source_term(energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j):
 def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss, 
                        frac_elem=[1.0,0.1,1e-4,3.16e-05], R0=1e9,
 	                   plot_all = False, sigma=1.5, NMAX=1000, NRES=20, tau_on=100.0, 
-                       seed=0, save_arrays=True):
+                       seed=0, save_arrays=True, savename=None):
     '''
     Run a jet simulation with given flux_scale and spectral index BETA.
 
@@ -451,14 +463,16 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     
     print ("Final iterators: {}/{}, {}/{}Myr, {}/{}kpc".format(i, NMAX, jet.time/unit.myr, TMAX/unit.myr, jet.length/unit.kpc, LMAX))
 
+    if savename == None:
+        savename = "beta{:.1f}q{:.1f}sig{:.1f}seed{:d}".format(BETA, np.log10(flux_scale), sigma, seed)
     if save_arrays:
         # save arrays to file 
-        np.save("array_saves/escaping_beta{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, np.log10(flux_scale), sigma, seed), escaping_time)
-        np.save("array_saves/ncr_beta{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, np.log10(flux_scale), sigma, seed), ncr_time)
-        np.save("array_saves/dim_{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, np.log10(flux_scale), sigma, seed), dimensions)
+        np.save("array_saves/escaping_{}.npy".format(savename), escaping_time)
+        np.save("array_saves/ncr_{}.npy".format(savename), ncr_time)
+        np.save("array_saves/dim_{}.npy".format(savename), dimensions)
 
     # store the jet class whatever
-    fname_store = "array_saves/jetstore_{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, np.log10(flux_scale), sigma, seed)
+    fname_store = "array_saves/jetstore_{}.npy".format(savename)
     jet_store.dump_to_file(fname_store)
 
 
