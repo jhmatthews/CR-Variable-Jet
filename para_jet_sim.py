@@ -78,11 +78,12 @@ for i in range(len(elems)):
 # betas is the spectral index of the injected spectrum 
 #flux_scales = np.logspace(43,45,num=10)
 
-NSIMS = 100
-powerlaw = sim.my_powerlaw(n=2.6, xmin=1e43, xmax=1e47)
+NSIMS = 1000
+powerlaw = sim.my_powerlaw(n=1.1, xmin=1e43, xmax=1e48)
 Q = powerlaw.rvs(size=NSIMS)
 
 variable = dict()
+variable["runid"] = np.arange(0,NSIMS,1)
 variable["betas"] = np.ones(NSIMS) * 2.0
 variable["flux_scales"] = powerlaw.rvs(size = NSIMS)
 variable["sigmas"] = np.random.random(size = NSIMS) * 3
@@ -90,8 +91,6 @@ variable["seeds"] = np.random.randint(0, 100.0 * NSIMS, size = NSIMS)
 
 # generate a random lifetime in log space
 variable["lifetime"] = 10.0 ** (np.random.random(size=NSIMS) * 2.5)
-variable["runid"] = np.arange(0,NSIMS,1)
-
 
 #indices = list(variable.values())
 #parameter_keys = variable.keys()
@@ -157,6 +156,8 @@ for i in range(my_nmin, my_nmax):
     # get the lognormal parameters
     #mu = np.log(flux_scale)
     lognorm_params = (SIGMA,0,np.exp(np.log(1)))
+
+    Length = int(tau_on / 0.1)
     
     # paramaters for lc are lognorm parameters, PSD parameters, tbin and Length (Age is really number of points)
     lc = sim.get_lc(lognorm_params, PSD_params, tbin, Length, RandomSeed=seed)

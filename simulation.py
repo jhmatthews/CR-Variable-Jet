@@ -312,7 +312,8 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     jet_store = JetStore(jet.rho_j, prot_e_edges, elec_e_edges)
     #jet.epsilon = 0.1
 
-    dimensions = np.zeros( (2, NWRITE, len(jet.z)) )
+    if save_arrays:
+        dimensions = np.zeros( (2, NWRITE, len(jet.z)) )
 
     tmax = np.max(lc.time)
     i = 0
@@ -449,8 +450,9 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
 
         if write: 
             jet_store.Update(jet)
-            dimensions[0,iwrite,:] = jet.z
-            dimensions[1,iwrite,:] = jet.width
+            if save_arrays:
+                dimensions[0,iwrite,:] = jet.z
+                dimensions[1,iwrite,:] = jet.width
 
         i += 1
 
