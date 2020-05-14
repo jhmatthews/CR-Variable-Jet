@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import numpy as np 
 import subprocess
-from constants import *
 
 def init_fig(fname="movie", fmt="mp4", fps=6):
     plt.close("all")
