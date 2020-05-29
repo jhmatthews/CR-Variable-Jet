@@ -124,7 +124,7 @@ def plot_lc(ax1, time, flux):
 
 class Losses:
     def __init__(self, elem_name):
-        self.energies, self.total, self.pp, self.pd, self.ep = np.loadtxt("tau_{}.dat".format(elem_name), unpack=True)
+        self.energies, self.total, self.pp, self.pd, self.ep = np.loadtxt("../tau_data/tau_{}.dat".format(elem_name), unpack=True)
 
     def interpol(self, energies, log=True):
         if log:
@@ -134,7 +134,7 @@ class Losses:
             E = self.energies
             total = self.total
 
-        interp_func = interp1d(E, total)
+        interp_func = interp1d(E, total, fill_value="extrapolate")
 
         if log:
             self.total_interpol = 10.0**interp_func(np.log10(energies))

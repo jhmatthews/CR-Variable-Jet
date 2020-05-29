@@ -45,7 +45,8 @@ Length = int(Age / tbin)
 # time is in kyr, so convert to Myr
 times = np.arange ( 0, Length*tbin, tbin) 
 
-elems = ["H", "He", "N", "Fe"]
+elem_temp = sim.get_elem_dict(fname = "abundances.txt", beta = 2)
+elems = elem_temp["species"]
 tau_loss = dict()
 
 energy_params = (14, 21, 3000)
@@ -69,8 +70,8 @@ for i in range(len(elems)):
 variable = dict()
 
 variable["betas"] = [2]
-variable["flux_scales"] = [1e44]
-variable["sigmas"] = [1.5]
+variable["flux_scales"] = [1e44,1e45]
+variable["sigmas"] = [1.5,3]
 variable["seeds"] = [12,38,100,200]
 variable["seeds"] = [38]
 indices = list(variable.values())
@@ -155,12 +156,12 @@ for i in range(my_nmin, my_nmax):
     z = np.array([1,2,7,26])
     a = np.array([1,4,14,56])
     frac_elem = np.array([1.0,0.1,1e-4,3.16e-05]) * z * z * (a ** (BETA-2))
-    # frac_elem = np.array([1.0,0.1,1e-4,3.16e-05]) * z * z / a
+    elem = sim.get_elem_dict(fname = "abundances.txt", beta = BETA)
     print (seed)
 
     # NMAX 40,000 should limit array saves to under a GB in size
     ncr, escaping, lcr = sim.run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
-                                                frac_elem=frac_elem, plot_all=False, 
+                                                elem=elem, plot_all=False, 
                                                 sigma=SIGMA, R0=1e9, NRES = 20, NMAX=30000, seed=seed)
 
     # get approximate gamma ray luminosity around 10 GeV

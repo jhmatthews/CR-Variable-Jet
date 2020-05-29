@@ -25,8 +25,6 @@ def write_variable(filename, variable_dict):
         filename.write("\n")
 
 
-
-
 # let's do this in parallel 
 nproc = MPI.COMM_WORLD.Get_size()       # number of processes
 my_rank = MPI.COMM_WORLD.Get_rank()     # The number/rank of this process
@@ -169,11 +167,12 @@ for i in range(my_nmin, my_nmax):
     z = np.array([1,2,7,26])
     a = np.array([1,4,14,56])
     frac_elem = np.array([1.0,0.1,1e-4,3.16e-05]) * z * z * (a ** (BETA-2))
+    elem = sim.get_elem_dict(fname = "abundances.txt", beta = BETA)
 
 
     # NMAX 40,000 should limit array saves to under a GB in size
     ncr, escaping, lcr = sim.run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
-                                                frac_elem=frac_elem, plot_all=False, 
+                                                elem=elem, plot_all=False, 
                                                 sigma=SIGMA, R0=1e9, NRES = 20, NMAX=100000, 
                                                 seed=seed, tau_on=tau_on, save_arrays=False,
                                                 savename=savename)

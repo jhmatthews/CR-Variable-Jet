@@ -12,10 +12,21 @@ from scipy.optimize import fsolve
 from msynchro.units import unit
 import msynchro
 
+def get_elem_dict(fname="abundances.txt", beta=2):
+    elem = dict()
+    Z, A, name, logF = np.genfromtxt(fname, unpack=True, dtype=str)
+    elem["z"] = Z.astype(float)
+    elem["a"] = A.astype(float)
+    fsol = 10.0 ** logF.astype(float)
+    elem["frac"] =  fsol * elem["z"] * elem["z"] * (elem["a"] ** (beta-2.0))
+    elem["species"] = name
+
+    return (elem)
+
 class my_powerlaw:
     '''
     container for generating random numbers from a powerlaw with slope < 1. 
-    For a power of form x**-n, with b>1, from xmin to xmax, the resulting
+    For a power of form x**-n, with n>1, from xmin to xmax, the resulting
     CDF can be shown to take the analytic form
 
         CDF(x) = (xmin^alpha - x^alpha) / (xmin^alpha - xmax^alpha)
@@ -32,6 +43,8 @@ class my_powerlaw:
         '''
         initialise the powerlaw parameters
         '''
+        if n <= 1:
+            raise ValueError("n must be > 1!")
         self.n = n
         self.alpha = 1.0 - self.n
         self.xmin = xmin 
@@ -42,10 +55,9 @@ class my_powerlaw:
         generate (size) random variables. if size is None, 
         generate a single float.
         '''
-        if size == None:
-            z = np.random.random()
-        else:
-            z = np.random.random(size=size)
+
+        # note that np.random.random generates a single float if size==None
+        z = np.random.random(size=size)
 
         term1 = z * (self.xmax ** self.alpha)
         term2 = (1. - z) * (self.xmin ** self.alpha)
@@ -163,14 +175,15 @@ def power_threshold(rigidity, v_over_c=0.1, eta=0.1):
     power = (0.1 / eta) * (rigidity / 1e19)**2 * (0.1/v_over_c) * 1e44
     return power 
 
-def max_energy(power, v_over_c=0.1, eta=0.1):
-    return 1e19*np.sqrt( (power/1e44) * (v_over_c/0.1))
+def max_energy(power, v_over_c = 0.1, eta_H = 0.3):
+    return 1e19  * np.sqrt((power/1e44) * (v_over_c/0.1)) * eta_H
 
 def get_source_term(energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j):
 
     Eichmann = False
     # Zbar is the average charge 
     Zbar = np.sum(frac_elem * z_elem)
+    Rmax = Rmax/100.0
 
     if part == "e": #electrons 
         if jet.set_aspect:
@@ -195,35 +208,38 @@ def get_source_term(energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j):
     E0 = R0 * z
     Emax = Rmax * z
 
+
     # normalisation of cosmic ray distribution depends on BETA 
     if BETA == 2:
         dynamic = 1.0/(np.log(Rmax/R0))
     else:
         dynamic = (2 - BETA) / ((Rmax/R0)**(2-BETA)-1.0)
 
+    exp_term = np.exp(-(rigidities/Rmax)**3)
+
     if Eichmann:
         # need to get things in the right units
         nu_i = frac / z / R0**2 * dynamic / meanZ
 
         # add_on is the injection term 
-        add_on = nu_i * Q0 * ((rigidities / R0)**-BETA)
+        add_on = nu_i * Q0 * ((rigidities / R0)**-BETA) *  exp_term
 
-        # beyond the cutoff we set injected term to 0
-        add_on[(rigidities>=Rmax)] = 0.0
-        add_on[(rigidities<=R0)] = 0.0
+
 
     else:
         nu_i = frac * dynamic 
-        add_on = nu_i * Q0 * (energies**-BETA)
-        # beyond the cutoff we set injected term to 0
-        add_on[(energies>=Emax)] = 0.0
-        add_on[(energies<=E0)] = 0.0
+        add_on = nu_i * Q0 * (energies**-BETA) * exp_term
+    
+    # beyond the cutoff we set injected term to 0
+    #add_on[(rigidities>=Rmax)] = 0.0
+    add_on[(rigidities<=R0)] = 0.0
+    #print (Rmax)
 
     return (add_on)
 
 
 def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss, 
-                       frac_elem=[1.0,0.1,1e-4,3.16e-05], R0=1e9,
+                       elem = None, R0=1e9,
 	                   plot_all = False, sigma=1.5, NMAX=1000, NRES=20, tau_on=100.0, 
                        seed=0, save_arrays=True, savename=None):
     '''
@@ -256,34 +272,29 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     	lcr 				CR luminosity above 60 EeV
     '''
 
-    # create energy bins 
+    # create energy bins for ions and electrons
     elec_e_edges = np.logspace(7, 14, energy_params[2] + 1)
-    #elec_e_edges = np.logspace(energy_params[0], energy_params[1], energy_params[2] + 1)
     elec_energies = 0.5 * (elec_e_edges[1:] + elec_e_edges[:-1])
-
     prot_e_edges = np.logspace(14, 21, energy_params[2] + 1)
     prot_energies = 0.5 * (prot_e_edges[1:] + prot_e_edges[:-1])
-
     # number of energy bins
     N_energies = energy_params[2]
-    # print (energies)
-    # import sys
-    # sys.exit()
 
     # elemental "abundances" - really injection fractions 
-    frac_elem = np.array(frac_elem)
-
-    #elems = ["H", "He", "N", "Fe"]
-    species = ["e", "H", "He", "N", "Fe"]
-            
-    # normalise just in case not already! 
-    frac_elem /= np.sum(frac_elem)
-
-    # charges 
-    z_elem = np.array([1,2,7,26])
+    # if elem is None we set to default
+    # otherwise use dictionary supplied 
+    if elem == None:
+        frac_elem = [1.0,0.1,1e-4,3.16e-05]
+        species = ["e", "H", "He", "N", "Fe"]    
+        z_elem = np.array([1,2,7,26])
+    else:
+        frac_elem = np.array(elem["frac"])
+        species = np.concatenate( (np.array(["e"]), np.array(elem["species"])) )
+        z_elem = np.array(elem["z"])
+    frac_elem /= np.sum(frac_elem)      # make sure normalised 
 
     # array to store the current CR spectrum for each ion
-    ncr = np.zeros( (len(species),N_energies) )
+    ncr = np.zeros( (len(species), N_energies) )
 
     # set up flux array
     flux = lc.flux * flux_scale 
@@ -293,33 +304,24 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     NWRITE = (NMAX // NRES)
     ncr_time = np.zeros( (len(species), NWRITE, N_energies) )
     escaping_time = np.zeros( (len(species), NWRITE, N_energies) )
-    #time_series = np.zeros( (len(species), NWRITE,len(energies)) )
 
     # max time is in Myrs 
     TMAX = tau_on * unit.myr
-
-    lgamma = np.zeros_like(flux)
-
     LMAX = 300.0 
 
     # initialise the jet 
     jet = JetClass(lc, env="UP", zmax = LMAX, nz = int (LMAX * 100))
     # only need this if it's a king profile
-    #jet.init_atmosphere(1.0, 50.0, 0.5)
+    # jet.init_atmosphere(1.0, 50.0, 0.5)
     jet.init_jet(power_norm = flux_scale, eta = 1e-5, f_edd_norm = 1e-4)
 
     # this is a class to store variables over time 
     jet_store = JetStore(jet.rho_j, prot_e_edges, elec_e_edges)
-    #jet.epsilon = 0.1
 
     if save_arrays:
         dimensions = np.zeros( (2, NWRITE, len(jet.z)) )
 
-    tmax = np.max(lc.time)
     i = 0
-
-    # print (len(flux))
-   
     failure = False
 
     while jet.length < (LMAX * unit.kpc) and i < NMAX and jet.time < TMAX and failure == False:
@@ -330,15 +332,12 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
         else:
             write = False
 
-        #print (i, jet.length/200.0/unit.kpc, jet.time/TMAX)
-
-        
+        # advance the jet solution, but check for errors and raise exceptions if necessary 
         try:
             ireturn = jet.UpdateSolution()
         except ValueError:
             ireturn = -1
             print ("ValueError from jet UpdateSolution: time {}".format(jet.time))
-
         if ireturn < 0:
             failure = True
             break
@@ -347,42 +346,32 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
         jet.lcr = 0.0
         jet.lcr_8EeV = 0.0
 
-        #print (i, jet.length, NMAX, len(jet_store.time))
-        # power = jet.power
-
         # get the maximum rigidity from the power requirement
-        Rmax = max_energy(jet.power, v_over_c=jet.v_j)
+        Rmax = max_energy(jet.epsilon * jet.power, v_over_c=jet.v_j/unit.c, eta_H = 1)
             
         # put a percentage of jet energy into CRs, store in eV units 
         Q0 = jet.epsilon * jet.f_work * jet.power / EV2ERGS
 
         # get the time step - IMPROVE 
-        #delta_t = lc.tbin * 1000.0 * YR
         delta_t = jet.dt
-        
-        lcr = 0.0
+
 
         for j, part in enumerate(species):
 
-             
             ncr_old = ncr[j]
         
             if part == "e":
                 energies = elec_energies
                 energy_edges = elec_e_edges 
-                cooling_time = (1e9 / energies) * jet.tsync_gev
-                # cooling = ncr[j] / cooling_time
-                # tau_total = cooling_time
                 tau_total = 0.0
                 escaping = np.zeros_like(ncr[j])
 
                 # get the Lorentz factors of electrons 
                 gammas = (energy_edges * unit.ev) / unit.melec_csq
+                gammas_cen = (energies * unit.ev) / unit.melec_csq 
                 energy_loss_rate = cooling_rate(gammas, jet.B) / unit.ev
-                cool_approx = energies / cooling_time
+                loss_rate_cen = cooling_rate(gammas_cen, jet.B) / unit.ev
                 tau_total = 0.0
-
-                #print ("Losses:", energy_loss_rate, cool_approx)
             else:
                 # number of escaping CRs
                 energies = prot_energies
@@ -392,12 +381,9 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
                 escape_recip = 1.0 / escape_time
                 cooling_recip = 1.0 / (tau_loss[part].total_interpol * unit.myr)
                 tau_total = 1.0 / (cooling_recip + escape_recip)
+                loss_rate_cen = 0.0
                 energy_loss_rate = 0.0
                 escaping = escape_recip * ncr_old
-
-                #escaping = ncr[j] / escape_time
-                # loss rate 
-                #cooling =  ncr[j] / (tau_loss[part].total_interpol *  1e6 * YR)
 
             #print (energy_loss_rate, jet.cool_adiabatic / unit.ev)
             energy_loss_rate += jet.cool_adiabatic * energy_edges
@@ -406,16 +392,19 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
             # this could be improved but at least it's in a subroutine
             source_term = get_source_term (energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j)
             
-            # evolve the particle distribution 
-            ncr[j] = msynchro.evolve.particle_evolve(energy_edges, energy_loss_rate, tau_total, source_term, ncr[j], delta_t)
-            #print (np.max(source_term), np.max(energy_loss_rate), delta_t, np.max(ncr[j]/tau_total))
+            # calculate the subcycle time step and evolve the particle distribution 
+            dt_particle = msynchro.evolve.get_dt(energies, loss_rate_cen, tau_total, source_term, ncr[j])
 
-            # this is dn/dt for each energy 
-            #escaping = ncr[j]/tau_total
-            #change = (source_term - escaping) * delta_t
+            if dt_particle == 0.0 or np.isnan(dt_particle) or i == 0:
+                n_subcycles = int(1)
+            else:
+                n_subcycles = int(delta_t // dt_particle) + 1
+            dts = np.ones(n_subcycles) * (delta_t/n_subcycles)
+            #print (n_subcycles, dt_particle, delta_t)
+            for dt in dts:
+                ncr[j] = msynchro.evolve.particle_evolve(energy_edges, energy_loss_rate, tau_total, source_term, ncr[j], dt)
 
-            # change the ncr distribution
-            #ncr[j] += change
+            # check for zeros 
             ncr[j][(ncr[j]<0)] = 0
 
 
@@ -423,7 +412,6 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
             # multiple of iwrite 
             if write:
                 ncr_time[j,iwrite,:] = ncr[j]
-                # get the number that escape 
                 escaping_time[j,iwrite,:] = escaping
 
             # cutoff for UHECRs (60 EeV)
@@ -435,18 +423,12 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
                 jet.lcr += np.fabs(np.trapz(energies[select_60eV] * unit.ev, energies[select_60eV] * escaping[select_60eV]))
                 jet.lcr_8EeV += np.fabs(np.trapz(energies[select_8eV] * unit.ev, energies[select_8eV] * escaping[select_8eV]))
 
-            elif write: # only compute at certain time steps
+            elif write: # only compute synchrotron luminosities at certain time steps
                 select = (energies <= 1e14) 
                 jet.lsync = 0.0
                 jet.l144 = 0.0
                 jet.lsync = msynchro.Ptot([1.4e9], energies[select], ncr[j][select], jet.B)
                 jet.l144 = msynchro.Ptot([1.44e8], energies[select], ncr[j][select], jet.B)
-                # print ("Synchrotron÷ lum:", jet.lsync)
-                #jet.lsynch = 0.0
-            
-            if j == 0:
-                #lcrtot = np.trapz(energies * EV2ERGS, energies * escaping)
-                all_lobe = np.trapz(energies * unit.ev, energies * ncr[j])
 
         if write: 
             jet_store.Update(jet)
@@ -477,7 +459,7 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     jet_store.dump_to_file(fname_store)
 
 
-    return (ncr_time, escaping_time, lcr)
+    return (ncr_time, escaping_time, 0.0)
 
 # class units:
 #     def __init__(self):

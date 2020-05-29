@@ -14,6 +14,7 @@ import os
 import pickle
 from simulation import unit
 import sys
+import simulation as sim
 
 def cooling_time(nu, B):
 	'''
@@ -68,27 +69,94 @@ def max_energy(power, v_over_c=0.1, eta=0.1):
     return 1e19*np.sqrt( (power/1e44) * (v_over_c/0.1))
 
 
-def three_panel_cr(time, energies, ncr, escaping, folder):
+def lnA_plot(energies, ncr2, escaping2, folder):
+
+	ncr = ncr2[1:,:,:]
+	escaping = escaping2[1:,:,:]
+	print (ncr.shape, escaping.shape)
+	ncr_tot = np.sum(ncr2, axis=1) # integrated over time 
+	escape_tot = np.sum(escaping2, axis=1) # integrated over time 
+	elems = sim.get_elem_dict(fname = "abundances.txt", beta = 2)
+
+	# # lnAa = np.ones_like(ncr) * np.log(elems["a"])
+	loga = np.log(elems["a"])
+	lnA = np.zeros_like(ncr)
+	lnA_esc = np.zeros_like(escaping)
+	for i in range(len(loga)):
+		lnA[i,:,:] = loga[i] * ncr[i,:,:]
+		lnA_esc[i,:,:] = loga[i] * escaping[i,:,:]
+
+
+	lnA = np.sum(lnA, axis=0) / np.sum(ncr, axis=0) # integrated over A 
+	lnA_esc = np.nansum(lnA_esc, axis=0) / np.nansum(escaping, axis=0) # integrated over A
+
+
+	lnA_array = np.zeros_like(energies)
+	lnA_array_esc = np.zeros_like(energies)
+	ln_arrays = [lnA_array, lnA_array_esc]
+	cr_spectra = [ncr_tot[1:],escape_tot[1:]]
+	for j,n in enumerate(cr_spectra):
+		for i in range(len(energies)):
+			ncr_sum = np.sum(n[:,i])
+			print (ncr_sum.shape, n.shape, ncr_tot.shape)
+			A_mean = np.sum(np.log(elems["a"]) * n[:,i], axis=0) / ncr_sum
+			print (ncr_sum, A_mean, n[:,i].shape)
+			ln_arrays[j][i] = A_mean
+
+			#std = np.std(ncr[])
+
+	fig = plt.figure( figsize=(10,5))
+	logE = np.log10(energies)
+	std = np.std(lnA, axis=0)
+	mean = np.nanmean(lnA, axis=0)
+	plt.plot(logE, mean, label="Inside lobe, time averaged", lw=4)
+	plt.fill_between(logE, mean-std, mean+std, alpha=0.3)
+
+	std = np.nanstd(lnA_esc, axis=0)
+	mean = np.nanmean(lnA_esc, axis=0)
+	plt.plot(logE, mean, ls="--", label="Escaping, time averaged", lw=4)
+	plt.fill_between(logE, mean-std, mean+std, alpha=0.3)
+
+	#plt.plot(logE, ln_arrays[0], label="Inside lobe, time averaged", lw=1)
+	#plt.plot(logE, ln_arrays[1], ls="--", label="Escaping, time averaged", lw=1)
+	plt.legend( fontsize=18, loc=4)
+	plt.xlim(17,19.9)
+	A = np.array([4,14,28,56])
+	plt.hlines([np.log(A)], 17,19.9, lw=1.5, ls="-.")
+	label = ["He", "N", "Si", "Fe"]
+	for i, a in enumerate(np.log(A)):
+		plt.text(17.25,a-0.2,label[i], fontsize=14)
+	plt.xlabel(r"$\log[E ({\rm eV})]$", fontsize=18)
+	plt.ylabel(r"$< \ln A > $", fontsize=18)
+	plt.subplots_adjust(top=0.98,bottom=0.12,right=0.98,left=0.07)
+	plt.savefig("{}/lnA.png".format(folder), dpi=200)
+
+
+def three_panel_cr(time, energies, ncr, escaping, folder, e_power=2):
 
 	# first, let's make integrated spectra
 	ncr_tot = np.sum(ncr, axis=1) # integrated over time 
 	escape_tot = np.sum(escaping, axis=1) # integrated over time 
-	ncr_tot_all = energies * energies * np.sum(ncr_tot[1:], axis=0)
-	escape_tot_all = energies * energies * np.sum(escape_tot[1:], axis=0)
+	elems = sim.get_elem_dict(fname = "abundances.txt", beta = 2)
 
 
+	e_units = energies ** e_power
+	ncr_tot_all = e_units * np.sum(ncr_tot[1:], axis=0)
+	escape_tot_all = e_units * np.sum(escape_tot[1:], axis=0)
 
 	fig = plt.figure( figsize=(11,5))
 	ax1 = fig.add_subplot(131)
 	ax2 = fig.add_subplot(132)
 	ax3 = fig.add_subplot(133)
-	ncr_max = np.max(ncr_tot_all[energies>=1e17])
-	escape_max = np.max(escape_tot_all[energies>=1e17])
-	ion_labels = ["Protons", "He", "N", "Fe"]
+	ncr_max = np.max(ncr_tot_all[energies>=1e16])
+	escape_max = np.max(escape_tot_all[energies>=1e16])
+	#ion_labels = elems["species"]
+	ion_labels = ["Protons", "He", "CNO", "Fe"]
 	logE = np.log10(energies)
-	for i in range(1,5):
-		ax1.plot(logE, energies * energies * ncr_tot[i]/ncr_max, label=ion_labels[i-1])
-		ax2.plot(logE, energies * energies * escape_tot[i]/escape_max, label=ion_labels[i-1])	
+	linestyles=["-","--",":","-."]
+	for i in range(1,len(ion_labels)+1):
+		ax1.plot(logE, e_units * ncr_tot[i]/ncr_max, label=ion_labels[i-1], ls=linestyles[i-1])
+		ax2.plot(logE, e_units * escape_tot[i]/escape_max, label=ion_labels[i-1], ls=linestyles[i-1])	
 
 	ax1.plot(logE, ncr_tot_all/ncr_max, c="k", lw=4, label="Total", alpha=0.7)
 	ax2.plot(logE, escape_tot_all/escape_max, c="k", lw=4, label="Total", alpha=0.7)
@@ -101,29 +169,30 @@ def three_panel_cr(time, energies, ncr, escaping, folder):
 	ncr_time_sum = np.sum(ncr[1:], axis=0)
 	escape_time_sum = np.sum(escaping[1:], axis=0)
 	for i,t in enumerate(times):
-		print (energies.shape, ncr_time_sum.shape, ncr_time_sum[t].shape)
-		ncr_plot = energies * energies * ncr_time_sum[t]
+		#print (energies.shape, ncr_time_sum.shape, ncr_time_sum[t].shape)
+		ncr_plot = e_units * ncr_time_sum[t]
 		if i == 0:
 			labels = ("Inside Lobe", "Escaping")
 		else:
 			labels = (None, None)
 
-		ax3.plot(logE, ncr_plot/np.max(ncr_plot[energies>=1e17]), c="C0", alpha=0.5, zorder=2, label=labels[0])
-		escaping_plot = energies * energies * escape_time_sum[t]
-		ax3.plot(logE, escaping_plot/np.max(escaping_plot[energies>=1e17]), c="C1", alpha=0.5, zorder=1, label=labels[1])
+		ax3.plot(logE, ncr_plot/np.max(ncr_plot[energies>=1e16]), c="C0", alpha=0.5, zorder=2, label=labels[0])
+		escaping_plot = e_units * escape_time_sum[t]
+		ax3.plot(logE, escaping_plot/np.max(escaping_plot[energies>=1e16]), c="C1", alpha=0.5, zorder=1, label=labels[1])
 
 	ax3.legend()
 	ax3.set_title("Spectra at random times")
 	for ax in [ax1,ax2,ax3]:
-		ax.set_xlim(17,20.5)
+		ax.set_xlim(16,19.9)
 		ax.set_ylim(1e-3,2)
 		ax.set_yscale("log")
 	ax2.set_yticklabels([])
 	ax3.set_yticklabels([])
-	ax1.set_ylabel("$E^2 dN/dE$ (Normalised)", fontsize=18)
+	ax1.set_ylabel("$E^{:d} dN/dE$ (Normalised)".format(e_power), fontsize=18)
 	ax2.set_xlabel(r"$\log[E ({\rm eV})]$", fontsize=18)
 	plt.subplots_adjust(hspace=0.05,wspace=0.05,right=0.98,top=0.94, left=0.08, bottom=0.13)
-	fig.savefig("{}/cr-3panel.png".format(folder), dpi=200)
+ 
+	fig.savefig("{}/cr-3panel-E{:d}.png".format(folder, e_power), dpi=200)
 
 	return (fig)
 
@@ -213,11 +282,12 @@ def standard_plot(j, folder):
 def luminosities_plot(j, folder):
 	plt.figure(figsize=(9,5))
 	plt.plot(j.time/unit.myr, np.log10(j.power), label=r"$\log(Q_{j})$", c="k", alpha=0.8)
-	plt.plot(j.time/unit.myr, np.log10(j.lcr), label=r"$\log(L_{\mathrm{cr,60EeV}})$", c="C1")
-	plt.plot(j.time/unit.myr, np.log10(j.lcr_8EeV), label=r"$\log(L_{\mathrm{cr,8EeV}})$", c="C3")
+	#plt.plot(j.time/unit.myr, np.log10(j.lcr), label=r"$\log(L_{\mathrm{cr,60EeV}})$", c="C1")
+	plt.plot(j.time/unit.myr, np.log10(100*j.lcr_8EeV), label=r"$\log(L_{\mathrm{cr,8EeV}})$", c="C3")
 	plt.plot(j.time/unit.myr, np.log10(j.lsync*1.4e9), label=r"$\log(\nu L_{1400})$", c="C0")
 	plt.plot(j.time/unit.myr, np.log10(j.l144*1.44e8), label=r"$\log(\nu L_{144})$", c="C2")
 	plt.xlabel("t (Myr)", fontsize=16)
+	plt.ylim(38,46)
 	plt.legend(loc=2, fontsize=14)
 	plt.ylabel(r"$\log$[Power or Luminosity (erg~s$^{-1}$)]", fontsize=16)
 	plt.xlim(0,np.max(j.time/unit.myr))
@@ -225,7 +295,29 @@ def luminosities_plot(j, folder):
 	plt.savefig("{}/luminosity.png".format(folder), dpi=200)
 
 
+def reshape_for_cno(ncr):
+	elems = sim.get_elem_dict(fname = "abundances.txt", beta = 2)
+	shape_new = list(ncr.shape)
+	shape_new[0] -= 2
+	ncr2 = np.zeros(shape_new)
 
+	icount = 0
+	ncr2[0:3,:,:] = ncr[0:3,:,:]
+
+
+	for i, s in enumerate(elems["species"]):
+		j = i + 1
+		print (i, s, j, shape_new)
+		if s in "CNO":
+			ncr2[3,:,:] += ncr[j,:,:]
+		elif s == "Fe":
+			ncr2[4,:,:] = ncr[j,:,:]
+		elif s not in "HHe":
+			ncr2[5 + icount,:,:] = ncr[j,:,:]
+			icount += 1
+
+	return (ncr2)
+	
 
 	
 
@@ -243,7 +335,7 @@ plt.rcParams["ytick.major.width"] = 1.5
 
 def make_all_plots(sigmas, flux_scales, betas, seeds, nenergies=3000):
 
-	cooling_plot()
+	#cooling_plot()
 	cr_energies = np.logspace(14,21,num=nenergies)
 	e_energies = np.logspace(7,14,num=nenergies)
 	for i_sigma, SIGMA in enumerate(sigmas):
@@ -251,11 +343,12 @@ def make_all_plots(sigmas, flux_scales, betas, seeds, nenergies=3000):
 			for i_beta, BETA in enumerate(betas):
 				for seed in seeds:
 
-					folder = "paper-figures-{}-p{}".format(seed, BETA)
+					logflux = np.log10(flux_scale)
+					folder = "paper-figures-{}-p{}-s{}_q{}".format(seed, BETA, sigma, logflux)
 					os.system("mkdir -p {}".format(folder))
 					#print ("test")
-					logflux = np.log10(flux_scale)
-					fname = "array_saves/jetstore_{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy.pkl".format(BETA, logflux,  SIGMA, seed)
+					
+					fname = "array_saves/jetstore_beta{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy.pkl".format(BETA, logflux,  SIGMA, seed)
 					with open(fname, "rb") as pickle_file:
 						j = pickle.load(pickle_file)
 
@@ -265,10 +358,17 @@ def make_all_plots(sigmas, flux_scales, betas, seeds, nenergies=3000):
 					# load particle spectra 
 					ncr = np.load("array_saves/ncr_beta{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, logflux,  SIGMA, seed))
 
+					lnA_plot(cr_energies, ncr, escaping, folder)
 
+					#print (ncr.shape)
+					ncr2 = reshape_for_cno(ncr)
+					escaping2 = reshape_for_cno(escaping)
 					fname = "beta{:.1f}q{:.1f}sig{:.1f}seed{:d}".format(BETA, logflux,  SIGMA, seed)
 
-					three_panel_cr(j.time / unit.myr, cr_energies, ncr, escaping, folder)
+					three_panel_cr(j.time / unit.myr, cr_energies, ncr2, escaping2, folder, e_power=2)
+					three_panel_cr(j.time / unit.myr, cr_energies, ncr2, escaping2, folder, e_power=3)
+
+
 
 					standard_plot(j, folder)
 
@@ -276,11 +376,12 @@ def make_all_plots(sigmas, flux_scales, betas, seeds, nenergies=3000):
 
 
 
+
 if __name__ == "__main__":
-	power = 1e44
+	power = 10.0**float(sys.argv[4])
 	seed = int(sys.argv[1])
 	beta = float(sys.argv[2])
-	sigma = 1.5
+	sigma = float(sys.argv[3])
 	make_all_plots([sigma], [power], [beta], [seed])
 
 
