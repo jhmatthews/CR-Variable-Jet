@@ -1,6 +1,5 @@
 import scipy.stats as st
 import matplotlib.pyplot as plt 
-from constants import *
 from scipy.interpolate import interp1d
 import astropy.units as u
 import subroutines as sub
@@ -352,7 +351,7 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
         Rmax = max_energy(jet.epsilon * jet.power, v_over_c=jet.v_j/unit.c, eta_H = 1)
             
         # put a percentage of jet energy into CRs, store in eV units 
-        Q0 = jet.epsilon * jet.f_work * jet.power / EV2ERGS
+        Q0 = jet.epsilon * jet.f_work * jet.power / unit.ev
 
         # get the time step - IMPROVE 
         delta_t = jet.dt

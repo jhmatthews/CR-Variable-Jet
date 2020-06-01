@@ -77,7 +77,7 @@ for i in range(len(elems)):
 #flux_scales = np.logspace(43,45,num=10)
 
 NSIMS = 1000
-powerlaw = sim.my_powerlaw(n=1.1, xmin=1e43, xmax=1e48)
+powerlaw = sim.my_powerlaw(n=1.001, xmin=1e43, xmax=1e48)
 Q = powerlaw.rvs(size=NSIMS)
 
 variable = dict()
