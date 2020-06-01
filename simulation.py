@@ -3,13 +3,54 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import astropy.units as u
 import subroutines as sub
-import os
+import os, sys
 import pickle
 from scipy.signal import savgol_filter
 from DELCgen import *
 from scipy.optimize import fsolve
 from msynchro.units import unit
 import msynchro
+from collections import Mapping, Container
+
+def deep_getsizeof(o, ids): 
+    """Find the memory footprint of a Python object
+
+    This is a recursive function that drills down a Python object graph
+    like a dictionary holding nested dictionaries with lists of lists
+    and tuples and sets.
+
+    The sys.getsizeof function does a shallow size of only. It counts each
+    object inside a container as pointer only regardless of how big it
+    really is.
+
+    :param o: the object
+    :param ids:
+    :return:
+    """
+    d = deep_getsizeof
+    if id(o) in ids:
+        return 0
+
+    r = sys.getsizeof(o)
+    ids.add(id(o))
+
+    if isinstance(o, str) or isinstance(0, str):
+        return r
+
+    if isinstance(o, Mapping):
+        return r + sum(d(k, ids) + d(v, ids) for k, v in o.iteritems())
+
+    if isinstance(o, Container):
+        return r + sum(d(x, ids) for x in o)
+
+    return r
+
+def get_memory_usage(objects):
+    sizes = np.zeros(len(objects))
+    for i,obj in enumerate(objects):
+        sizes[i] = deep_getsizeof(obj, set())
+
+    return (sizes)
 
 def get_elem_dict(fname=None, beta=2):
     if fname == None:
@@ -238,11 +279,11 @@ def get_source_term(energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j):
 
     return (add_on)
 
-
+#@profile
 def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss, 
                        elem = None, R0=1e9,
 	                   plot_all = False, sigma=1.5, NMAX=1000, NRES=20, tau_on=100.0, 
-                       seed=0, save_arrays=True, savename=None):
+                       seed=0, save_arrays=True, savename=None, float_dtype=np.float64):
     '''
     Run a jet simulation with given flux_scale and spectral index BETA.
 
@@ -295,7 +336,7 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     frac_elem /= np.sum(frac_elem)      # make sure normalised 
 
     # array to store the current CR spectrum for each ion
-    ncr = np.zeros( (len(species), N_energies) )
+    ncr = np.zeros( (len(species), N_energies), dtype=np.float64)
 
     # set up flux array
     flux = lc.flux * flux_scale 
@@ -303,8 +344,10 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     # arrays to store the stored and escaping CRs for every time bin and every ion
     # these get returned by the function
     NWRITE = (NMAX // NRES)
-    ncr_time = np.zeros( (len(species), NWRITE, N_energies) )
-    escaping_time = np.zeros( (len(species), NWRITE, N_energies) )
+    ncr_time = np.zeros( (len(species), NWRITE, N_energies), dtype=float_dtype)
+    escaping_time = np.zeros( (len(species), NWRITE, N_energies), dtype=float_dtype)
+    nsize = len(species) * NWRITE * N_energies
+    print ("Size of spectral arrays is {:8.4e}, approx {}MB:".format(nsize, nsize * sys.getsizeof(float_dtype(1.0))/1e6))
 
     # max time is in Myrs 
     TMAX = tau_on * unit.myr
@@ -320,16 +363,29 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     jet_store = JetStore(jet.rho_j, prot_e_edges, elec_e_edges)
 
     if save_arrays:
-        dimensions = np.zeros( (2, NWRITE, len(jet.z)) )
+        dimensions = np.zeros( (2, NWRITE, len(jet.z)), dtype=np.float64)
 
     i = 0
     failure = False
+
+    import os, psutil 
+    pid = os.getpid()
+    ps = psutil.Process(pid)
+
+    sizes = get_memory_usage( [jet, jet_store])
+    print ("Starting:")
+    print (sizes)
 
     while jet.length < (LMAX * unit.kpc) and i < NMAX and jet.time < TMAX and failure == False:
 
         if (i % NRES) == 0:
             write = True
             iwrite = (i // NRES)
+            info = ps.memory_info()
+            print ("Mem:", i, info[0] / 1e6, info[1] / 1e6)
+            #sizes = get_memory_usage( [jet, jet_store])
+            #print (sizes)
+
         else:
             write = False
 
@@ -413,7 +469,8 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
             # multiple of iwrite 
             if write:
                 ncr_time[j,iwrite,:] = ncr[j]
-                escaping_time[j,iwrite,:] = escaping
+                if save_arrays:
+                    escaping_time[j,iwrite,:] = escaping
 
             # cutoff for UHECRs (60 EeV)
             select_60eV = (energies > 6e19)

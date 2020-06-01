@@ -86,11 +86,11 @@ variable["runid"] = np.arange(0,NSIMS,1)
 variable["betas"] = np.ones(NSIMS) * 2.0
 variable["flux_scales"] = powerlaw.rvs(size = NSIMS)
 variable["sigmas"] = np.random.random(size = NSIMS) * 3
-variable["seeds"] = np.random.randint(0, 100.0 * NSIMS, size = NSIMS)
+variable["seeds"] = np.arange(0, NSIMS, 1)
 
 # generate a random lifetime in log space
 variable["lifetime"] = 10.0 ** (np.random.random(size=NSIMS) * 2.5)
-
+variable["lifetime"][0] = 100.0
 #indices = list(variable.values())
 #parameter_keys = variable.keys()
 #parameter_values = list(product(*indices))
@@ -143,8 +143,8 @@ time_init = time.time()
 tinit = time_init
 
 
-for i in range(my_nmin, my_nmax):
-    
+# for i in range(my_nmin, my_nmax):
+for i in range(0, 1):
     BETA = variable["betas"][i]
     flux_scale = variable["flux_scales"][i]
     SIGMA = variable["sigmas"][i]
@@ -174,7 +174,7 @@ for i in range(my_nmin, my_nmax):
     # NMAX 40,000 should limit array saves to under a GB in size
     ncr, escaping, lcr = sim.run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
                                                 elem=elem, plot_all=False, 
-                                                sigma=SIGMA, R0=1e9, NRES = 20, NMAX=100000, 
+                                                sigma=SIGMA, R0=1e9, NRES = 200, NMAX=100000, 
                                                 seed=seed, tau_on=tau_on, save_arrays=False,
                                                 savename=savename)
 
