@@ -16,13 +16,13 @@ from simulation import unit
 from scipy.stats import lognorm
 
 plt.rcParams["text.usetex"] = "True"
-plt.rcParams['xtick.labelsize']=14
-plt.rcParams['ytick.labelsize']=14
+plt.rcParams['xtick.labelsize']=16
+plt.rcParams['ytick.labelsize']=16
 plt.rcParams['font.serif']=['cm']
 plt.rcParams['font.family']='serif'	
 plt.rcParams["text.usetex"] = "True"
-plt.rcParams["lines.linewidth"] = 2.5
-plt.rcParams["axes.linewidth"] = 1.5
+plt.rcParams["lines.linewidth"] = 3
+plt.rcParams["axes.linewidth"] = 2
 plt.rcParams["xtick.major.width"] = 1.5
 plt.rcParams["ytick.major.width"] = 1.5
 
@@ -37,15 +37,21 @@ plt.figure(figsize=(7,5))
 plt.plot(sigma, np.exp(mu + sigma**2 / 2), lw=3, label="Mean")
 plt.plot(sigma, np.exp(mu - sigma*sigma / 2), lw=3, ls="--", label="Mode")
 plt.semilogy()
-plt.ylabel("Moment of jet power distribution", fontsize=14)
-plt.xlabel(r"$\sigma$", fontsize=18)
-plt.legend(loc=2, fontsize=14)
-ax2 = plt.gca().twinx()
-ax2.plot(sigma, sf, c="k", ls=":", label="Fraction of time $Q>10^{44}$erg/s")
+plt.ylabel("Moment of jet power distribution ($\log$)", fontsize=16)
+plt.xlabel(r"$\sigma$", fontsize=20)
+plt.legend(loc=2, fontsize=16)
+ax1 = plt.gca()
+ax2 = ax1.twinx()
+ax2.plot(sigma, sf, c="k", ls=":", label="Fraction of time $Q_j>10^{44}$erg/s")
 ax2.legend(fontsize=14)
-ax2.set_ylabel("Fraction of time $Q_j>10^{44}$erg/s", fontsize=14)
-ax2.set_ylim(0,0.4)
+ax2.set_ylabel("Fraction of time $Q_j>10^{44}$erg/s", fontsize=16)
+ax2.set_ylim(0,0.39)
+ax2.set_yticks([0,0.1,0.2,0.3])
 plt.xticks([0,1,2,3])
+
+s = np.arange(41,46)
+ax1.set_yticks(10.0**s)
+ax1.set_yticklabels([str(ss) for ss in s])
 plt.xlim(0,3)
 plt.subplots_adjust(top=0.98, left=0.1, right=0.9)
 plt.savefig("sigma.png", dpi=300)

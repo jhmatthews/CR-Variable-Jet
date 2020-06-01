@@ -83,7 +83,7 @@ my_length = []
 
 #times = 
 frequencies = np.logspace(8,12,400)
-nspectra = 100
+nspectra = 30
 spectra = np.zeros( (nspectra, len(frequencies)) )
 ispec = np.random.randint(1500, size=nspectra)
 
@@ -97,7 +97,7 @@ for i_sigma, SIGMA in enumerate(sigmas):
 
 			for seed in seeds:
 				logflux = np.log10(flux_scale)
-				fname = "array_saves/jetstore_{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy.pkl".format(BETA, logflux,  SIGMA, seed)
+				fname = "array_saves/jetstore_beta{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy.pkl".format(BETA, logflux,  SIGMA, seed)
 				with open(fname, "rb") as pickle_file:
 					j = pickle.load(pickle_file)
 
@@ -114,7 +114,7 @@ for i_sigma, SIGMA in enumerate(sigmas):
 
 #normalised
 #for NUSE in range(100):
-NUSE = 73
+NUSE = 25
 plt.figure(figsize=(10,5))
 
 plt.subplot(121)

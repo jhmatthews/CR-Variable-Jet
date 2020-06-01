@@ -25,8 +25,6 @@ def write_variable(filename, variable_dict):
         filename.write("\n")
 
 
-
-
 # let's do this in parallel 
 nproc = MPI.COMM_WORLD.Get_size()       # number of processes
 my_rank = MPI.COMM_WORLD.Get_rank()     # The number/rank of this process
@@ -83,6 +81,7 @@ powerlaw = sim.my_powerlaw(n=1.001, xmin=1e43, xmax=1e48)
 Q = powerlaw.rvs(size=NSIMS)
 
 variable = dict()
+variable["runid"] = np.arange(0,NSIMS,1)
 variable["betas"] = np.ones(NSIMS) * 2.0
 variable["flux_scales"] = powerlaw.rvs(size = NSIMS)
 variable["sigmas"] = np.random.random(size = NSIMS) * 3
@@ -90,8 +89,6 @@ variable["seeds"] = np.random.randint(0, 100.0 * NSIMS, size = NSIMS)
 
 # generate a random lifetime in log space
 variable["lifetime"] = 10.0 ** (np.random.random(size=NSIMS) * 2.5)
-variable["runid"] = np.arange(0,NSIMS,1)
-
 
 #indices = list(variable.values())
 #parameter_keys = variable.keys()
@@ -157,6 +154,8 @@ for i in range(my_nmin, my_nmax):
     # get the lognormal parameters
     #mu = np.log(flux_scale)
     lognorm_params = (SIGMA,0,np.exp(np.log(1)))
+
+    Length = int(tau_on / 0.1)
     
     # paramaters for lc are lognorm parameters, PSD parameters, tbin and Length (Age is really number of points)
     lc = sim.get_lc(lognorm_params, PSD_params, tbin, Length, RandomSeed=seed)
@@ -168,11 +167,12 @@ for i in range(my_nmin, my_nmax):
     z = np.array([1,2,7,26])
     a = np.array([1,4,14,56])
     frac_elem = np.array([1.0,0.1,1e-4,3.16e-05]) * z * z * (a ** (BETA-2))
+    elem = sim.get_elem_dict(beta = BETA)
 
 
     # NMAX 40,000 should limit array saves to under a GB in size
     ncr, escaping, lcr = sim.run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
-                                                frac_elem=frac_elem, plot_all=False, 
+                                                elem=elem, plot_all=False, 
                                                 sigma=SIGMA, R0=1e9, NRES = 20, NMAX=100000, 
                                                 seed=seed, tau_on=tau_on, save_arrays=False,
                                                 savename=savename)
