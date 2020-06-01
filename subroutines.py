@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import numpy as np 
 import subprocess
-from constants import *
+import os
 
 def init_fig(fname="movie", fmt="mp4", fps=6):
     plt.close("all")
@@ -124,7 +124,8 @@ def plot_lc(ax1, time, flux):
 
 class Losses:
     def __init__(self, elem_name):
-        self.energies, self.total, self.pp, self.pd, self.ep = np.loadtxt("tau_data/tau_{}.dat".format(elem_name), unpack=True)
+        folder = os.path.dirname(__file__)
+        self.energies, self.total, self.pp, self.pd, self.ep = np.loadtxt("{}/tau_data/tau_{}.dat".format(folder, elem_name), unpack=True)
 
     def interpol(self, energies, log=True):
         if log:
