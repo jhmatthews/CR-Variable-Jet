@@ -76,7 +76,7 @@ def lnA_plot(energies, ncr2, escaping2, folder):
 	print (ncr.shape, escaping.shape)
 	ncr_tot = np.sum(ncr2, axis=1) # integrated over time 
 	escape_tot = np.sum(escaping2, axis=1) # integrated over time 
-	elems = sim.get_elem_dict(fname = "abundances.txt", beta = 2)
+	elems = sim.get_elem_dict(beta = 2)
 
 	# # lnAa = np.ones_like(ncr) * np.log(elems["a"])
 	loga = np.log(elems["a"])
@@ -137,7 +137,7 @@ def three_panel_cr(time, energies, ncr, escaping, folder, e_power=2):
 	# first, let's make integrated spectra
 	ncr_tot = np.sum(ncr, axis=1) # integrated over time 
 	escape_tot = np.sum(escaping, axis=1) # integrated over time 
-	elems = sim.get_elem_dict(fname = "abundances.txt", beta = 2)
+	elems = sim.get_elem_dict(beta = 2)
 
 
 	e_units = energies ** e_power
@@ -296,7 +296,7 @@ def luminosities_plot(j, folder):
 
 
 def reshape_for_cno(ncr):
-	elems = sim.get_elem_dict(fname = "abundances.txt", beta = 2)
+	elems = sim.get_elem_dict(beta = 2)
 	shape_new = list(ncr.shape)
 	shape_new[0] -= 2
 	ncr2 = np.zeros(shape_new)

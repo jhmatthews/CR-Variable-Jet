@@ -12,7 +12,9 @@ from scipy.optimize import fsolve
 from msynchro.units import unit
 import msynchro
 
-def get_elem_dict(fname="abundances.txt", beta=2):
+def get_elem_dict(fname=None, beta=2):
+    if fname == None:
+        fname = "{}/data/abundances.txt".format(os.path.dirname(__file__))
     elem = dict()
     Z, A, name, logF = np.genfromtxt(fname, unpack=True, dtype=str)
     elem["z"] = Z.astype(float)

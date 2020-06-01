@@ -156,7 +156,7 @@ for i in range(my_nmin, my_nmax):
     z = np.array([1,2,7,26])
     a = np.array([1,4,14,56])
     frac_elem = np.array([1.0,0.1,1e-4,3.16e-05]) * z * z * (a ** (BETA-2))
-    elem = sim.get_elem_dict(fname = "abundances.txt", beta = BETA)
+    elem = sim.get_elem_dict(beta = BETA)
     print (seed)
 
     # NMAX 40,000 should limit array saves to under a GB in size

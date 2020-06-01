@@ -125,7 +125,7 @@ def plot_lc(ax1, time, flux):
 class Losses:
     def __init__(self, elem_name):
         folder = os.path.dirname(__file__)
-        self.energies, self.total, self.pp, self.pd, self.ep = np.loadtxt("{}/tau_data/tau_{}.dat".format(folder, elem_name), unpack=True)
+        self.energies, self.total, self.pp, self.pd, self.ep = np.loadtxt("{}/data/tau_{}.dat".format(folder, elem_name), unpack=True)
 
     def interpol(self, energies, log=True):
         if log:
