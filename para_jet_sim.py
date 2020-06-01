@@ -54,7 +54,8 @@ Length = int(Age / tbin)
 # time is in kyr, so convert to Myr
 times = np.arange ( 0, Length*tbin, tbin) 
 
-elems = ["H", "He", "N", "Fe"]
+elem_dict = sim.get_elem_dict(beta = 2)
+elems = elem_dict["species"]
 tau_loss = dict()
 
 energy_params = (14, 21, 3000)
