@@ -14,6 +14,7 @@ import os
 import pickle
 from simulation import unit
 import msynchro
+from jm_util import *
 
 def max_energy(power, v_over_c=0.1, eta=0.1):
     return 1e19*np.sqrt( (power/1e44) * (v_over_c/0.1))
@@ -102,7 +103,8 @@ for i_sigma, SIGMA in enumerate(sigmas):
 					j = pickle.load(pickle_file)
 
 				# make the mesh plot with the remaining CRs 
-				ncr = np.load("array_saves/ncr_beta{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, logflux,  SIGMA, seed))
+				ncr = load_one_npz("array_saves/ncr_beta{:.1f}q{:.1f}sig{:.1f}seed{:d}.npz".format(BETA, logflux,  SIGMA, seed))
+				#ncr = np.load("array_saves/ncr_beta{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, logflux,  SIGMA, seed))
 			
 				for i in range(nspectra):
 					Bfield = j.B[i]

@@ -11,6 +11,7 @@ from scipy.optimize import fsolve
 from msynchro.units import unit
 import msynchro
 from collections import Mapping, Container
+from scipy.special import ellipe
 
 def deep_getsizeof(o, ids): 
     """Find the memory footprint of a Python object
@@ -225,13 +226,14 @@ def get_source_term(energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j):
     Eichmann = False
     # Zbar is the average charge 
     Zbar = np.sum(frac_elem * z_elem)
-    Rmax = Rmax/100.0
+    #Rmax = Rmax/100.0
 
     if part == "e": #electrons 
-        if jet.set_aspect:
-            Rcutoff = 1e12
-        else:
-            Rcutoff = 1e14
+        #if jet.set_aspect:
+        #    Rcutoff = 1e12
+        #else:
+        Rcutoff = 1e12
+        Rmax = 1e12
 
         R0 = 1e6
         meanZ = frac = z = 1.0
@@ -257,7 +259,7 @@ def get_source_term(energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j):
     else:
         dynamic = (2 - BETA) / ((Rmax/R0)**(2-BETA)-1.0)
 
-    exp_term = np.exp(-(rigidities/Rmax)**3)
+    exp_term = np.exp(-(rigidities/Rmax))
 
     if Eichmann:
         # need to get things in the right units
@@ -283,7 +285,8 @@ def get_source_term(energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j):
 def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss, 
                        elem = None, R0=1e9,
 	                   plot_all = False, sigma=1.5, NMAX=1000, NRES=20, tau_on=100.0, 
-                       seed=0, save_arrays=True, savename=None, float_dtype=np.float64):
+                       seed=0, save_arrays=True, savename=None, float_dtype=np.float64,
+                       eta_H = 1.0, geometry = 1.0, eta=1e-4):
     '''
     Run a jet simulation with given flux_scale and spectral index BETA.
 
@@ -357,7 +360,7 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     jet = JetClass(lc, env="UP", zmax = LMAX, nz = int (LMAX * 100))
     # only need this if it's a king profile
     # jet.init_atmosphere(1.0, 50.0, 0.5)
-    jet.init_jet(power_norm = flux_scale, eta = 1e-5, f_edd_norm = 1e-4)
+    jet.init_jet(power_norm = flux_scale, eta = eta, f_edd_norm = 1e-4, geometry=geometry)
 
     # this is a class to store variables over time 
     jet_store = JetStore(jet.rho_j, prot_e_edges, elec_e_edges)
@@ -375,6 +378,7 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     sizes = get_memory_usage( [jet, jet_store])
     print ("Starting:")
     print (sizes)
+    #NMAX = 1000
 
     while jet.length < (LMAX * unit.kpc) and i < NMAX and jet.time < TMAX and failure == False:
 
@@ -392,9 +396,10 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
         # advance the jet solution, but check for errors and raise exceptions if necessary 
         try:
             ireturn = jet.UpdateSolution()
-        except ValueError:
+        except Exception as _except:
             ireturn = -1
-            print ("ValueError from jet UpdateSolution: time {}".format(jet.time))
+            print ("Exception from jet UpdateSolution: time {}".format(jet.time/unit.myr))
+            print (_except)
         if ireturn < 0:
             failure = True
             break
@@ -404,10 +409,10 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
         jet.lcr_8EeV = 0.0
 
         # get the maximum rigidity from the power requirement
-        Rmax = max_energy(jet.epsilon * jet.power, v_over_c=jet.v_j/unit.c, eta_H = 1)
+        Rmax = max_energy(jet.eps_b * jet.power, v_over_c=jet.v_j/unit.c, eta_H = eta_H)
             
         # put a percentage of jet energy into CRs, store in eV units 
-        Q0 = jet.epsilon * jet.f_work * jet.power / unit.ev
+        Q0 = jet.epsilon * jet.power / unit.ev
 
         # get the time step - IMPROVE 
         delta_t = jet.dt
@@ -456,6 +461,7 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
                 n_subcycles = int(1)
             else:
                 n_subcycles = int(delta_t // dt_particle) + 1
+            #n_subcycles = 1  # PLACEHOLDER
             dts = np.ones(n_subcycles) * (delta_t/n_subcycles)
             #print (n_subcycles, dt_particle, delta_t)
             for dt in dts:
@@ -469,24 +475,25 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
             # multiple of iwrite 
             if write:
                 ncr_time[j,iwrite,:] = ncr[j]
-                if save_arrays:
-                    escaping_time[j,iwrite,:] = escaping
+                #if save_arrays:
+                escaping_time[j,iwrite,:] = escaping
 
             # cutoff for UHECRs (60 EeV)
             select_60eV = (energies > 6e19)
             select_8eV = (energies > 8e18)
 
             # store the UHECR luminosity or the synchrotron luminosity
+            # the factors of 2 are to account for both lobes 
             if part != "e":
-                jet.lcr += np.fabs(np.trapz(energies[select_60eV] * unit.ev, energies[select_60eV] * escaping[select_60eV]))
-                jet.lcr_8EeV += np.fabs(np.trapz(energies[select_8eV] * unit.ev, energies[select_8eV] * escaping[select_8eV]))
+                jet.lcr += 2.0 * np.fabs(np.trapz(energies[select_60eV] * unit.ev, energies[select_60eV] * escaping[select_60eV]))
+                jet.lcr_8EeV += 2.0 * np.fabs(np.trapz(energies[select_8eV] * unit.ev, energies[select_8eV] * escaping[select_8eV]))
 
             elif write: # only compute synchrotron luminosities at certain time steps
                 select = (energies <= 1e14) 
                 jet.lsync = 0.0
                 jet.l144 = 0.0
-                jet.lsync = msynchro.Ptot([1.4e9], energies[select], ncr[j][select], jet.B)
-                jet.l144 = msynchro.Ptot([1.44e8], energies[select], ncr[j][select], jet.B)
+                jet.lsync = 2.0 * msynchro.Ptot([1.4e9], energies[select], ncr[j][select], jet.B)
+                jet.l144 = 2.0 * msynchro.Ptot([1.44e8], energies[select], ncr[j][select], jet.B)
 
         if write: 
             jet_store.Update(jet)
@@ -506,14 +513,17 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
 
     if savename == None:
         savename = "beta{:.1f}q{:.1f}sig{:.1f}seed{:d}".format(BETA, np.log10(flux_scale), sigma, seed)
+    
+    np.savez_compressed("array_saves/escaping_{}".format(savename), escaping_time)
+    np.savez_compressed("array_saves/ncr_{}".format(savename), ncr_time)
     if save_arrays:
         # save arrays to file 
-        np.save("array_saves/escaping_{}.npy".format(savename), escaping_time)
-        np.save("array_saves/ncr_{}.npy".format(savename), ncr_time)
-        np.save("array_saves/dim_{}.npy".format(savename), dimensions)
+        #np.savez_compressed("array_saves/escaping_{}".format(savename), escaping_time)
+        #np.savez_compressed("array_saves/ncr_{}".format(savename), ncr_time)
+        np.savez_compressed("array_saves/dim_{}".format(savename), dimensions)
 
     # store the jet class whatever
-    fname_store = "array_saves/jetstore_{}.npy".format(savename)
+    fname_store = "array_saves/jetstore_{}".format(savename)
     jet_store.dump_to_file(fname_store)
 
 
@@ -563,6 +573,10 @@ class JetStore:
         self.power = np.array([])
         self.gmm = np.array([])
         self.P0 = np.array([])
+        self.f_work = np.array([])
+        self.f_work_B = np.array([])
+        self.v_h = np.array([])
+        self.v_h0 = np.array([])
 
     def Update(self, jet):
         self.B = np.append(self.B, jet.B)
@@ -586,6 +600,10 @@ class JetStore:
         self.gmm = np.append(self.gmm, jet.gmm)
         self.jet = jet
         self.P0 = np.append(self.P0, jet.pressure_uniform)
+        self.f_work = np.append(self.f_work, jet.f_work)
+        self.f_work_B = np.append(self.f_work_B, jet.f_work_B)
+        self.v_h = np.append(self.v_h, jet.v_h)
+        self.v_h0 = np.append(self.v_h0, jet.v_h0)
 
 
     def dump_to_file(self, fname):
@@ -624,7 +642,7 @@ class JetClass:
         self.lcr_8EeV = 0.0
         self.set_aspect = True
         self.length = 0.0
-        self.rho_j = 1e-4
+        self.rho_j = 1e-8
         self.power = 1e43
         self.power_norm = 1e43
         self.area = np.pi * ((0.5 * unit.kpc)**2)
@@ -634,8 +652,14 @@ class JetClass:
         self.dz = zmax * unit.kpc / (nz  - 1)
         self.time = 0.0
         self.gamma = 4./3.
-        self.zeta = 1.0
-        self.kappa = 0.5
+        self.eps_b = 0.075 
+        self.eps_e = 0.15 
+        self.eps_cr = 0.15 
+        self.kappa = self.eps_cr / self.eps_e
+        self.epsilon = self.eps_cr + self.eps_e
+        self.zeta = self.eps_b / self.eps_e 
+
+
         #self.eta_b = 0.3
         self.R_escape = 0.0
         self.half_width = 0.0
@@ -643,15 +667,17 @@ class JetClass:
         self.pressure_uniform = 0.0
         self.hs_pressure = 0.0
         self.gmm = 2.0
-        self.mu_weight = 1.0
+        self.mu_weight = 0.62 # solar abundances, ionized 
         self.H0 = 70.0
         self.geometry_factor = 1.0
         self.rel_advance = True
         self.debug = debug
-        self.epsilon = 0.3
-        self.f_work = 0.5    
+        self.f_work = 1   
+        self.f_work_B = 1.0 
         self.E_B = 0.0
-        self.power_available = self.f_work * self.power 
+        self.power_available = self.power 
+        self.ighost = 5
+        self.v_h = self.v_h0 = 0.0
 
 
         # set profiles up 
@@ -687,7 +713,10 @@ class JetClass:
 
     def init_jet(self, **kwargs):
 
-        self.power_norm = kwargs["power_norm"]
+        # the factor two here is because the power_norm is a 2-sided jet power
+        # the luminosities will get multiplied by this later.
+        self.power_norm = kwargs["power_norm"] / 2.0
+        self.geometry_factor = kwargs["geometry"]
 
         if self.atmosphere == "UP":
             self.f_edd_norm = kwargs["f_edd_norm"]
@@ -698,7 +727,7 @@ class JetClass:
             # this is the Bogdan relation 
             exponent = (np.log10(self.mbh/1e9) + 0.22) / 1.07 
             self.M500_msol = (10.0 ** exponent) * 1e13
-            #self.M500_msol = 1e14
+            self.M500_msol = 1e14
             self.M500_cgs = self.M500_msol * unit.msol
             # self._print ("M500: {}".format(self.M500_msol))
             print ("M500: {}".format(self.M500_msol))
@@ -715,6 +744,7 @@ class JetClass:
 
         # rho_j is really number density 
         self.rho_j = kwargs["eta"] * self.rho0
+        print (self.rho_j)
         self.eta_density = kwargs["eta"]
 
 
@@ -794,12 +824,14 @@ class JetClass:
         get the advance speed. Calls the density function and calculates density contrast
         '''
         if self.length > 0:
-            rho = self.profile(self.length)[0]
+            rho, Pa_head = self.profile(self.length)
         else:
             rho = self.rho0
+            Pa_head = self.profile(0.1* unit.kpc)[1]
 
         # get density contrast
         eta = self.rho_j / rho
+        #print (eta, "ETA")
         eta_star = self.gmm * self.gmm * eta 
         root_eta = np.sqrt(self.rho_j / rho) 
 
@@ -807,6 +839,8 @@ class JetClass:
             factor = np.sqrt(eta_star) / (np.sqrt(eta_star) + 1)
         else:
             factor = root_eta 
+
+        #print (factor)
 
         hs_pressure = 0.5 * self.rho_j * unit.mprot * self.v_j * self.v_j
         if self.hs_pressure != 0.0:
@@ -817,7 +851,13 @@ class JetClass:
                 hs_pressure = self.hs_pressure + (np.sign(dp) * 0.1 * self.hs_pressure)
 
         self.hs_pressure = hs_pressure
-        self.v_advance = factor * self.v_j / self.geometry_factor
+
+        self.v_h = factor * self.v_j / self.geometry_factor
+        self.v_h0 = (self.pressure_uniform - Pa_head) / rho
+        #self.v_advance = np.max( [self.v_h, self.v_h0] )
+        self.v_advance = self.v_h
+        #self.v_advance = factor * self.v_j / self.geometry_factor
+
 
     def get_v_perp(self):
         '''
@@ -838,9 +878,11 @@ class JetClass:
 
         # get angle of shock normal 
         phi = np.arctan(grad_normal)
+        #print (phi, grad_normal)
 
         # find cases where width = 0
         phi[(self.width[select]==0.0)] = 0
+        phi[np.isnan(phi)] = 0.0
 
         #print (grad_normal, phi, self.length)
         # for i,z in enumerate(self.z[select]):
@@ -916,15 +958,7 @@ class JetClass:
         #self.power = self.interp_func(time) * self.power_norm
         self.v_j = self.v_from_gamma(self.gmm)
         self.mdot = self.gmm * self.rho_j * self.v_j * self.area * unit.mprot
-        self.power_available = self.f_work * self.power
-
-    def centre_of_mass(self):
-        '''
-        get the centre of mass
-        '''
-        numerator = np.trapz(self.z * self.width * self.width, x=self.z)
-        denominator = np.trapz(self.width * self.width, x=self.z)
-        return (numerator/denominator)
+        self.power_available = self.power
 
     def mean_escape_distance(self):
         '''
@@ -967,6 +1001,10 @@ class JetClass:
         #     import sys
         #     sys.exit()
 
+    def ellipse_r(self, a, b):
+        k = 1.0 - (b**2/a**2)
+        return a * ellipe(k) / np.pi * 2.0
+
 
     def UpdateSolution(self):
         '''
@@ -992,9 +1030,7 @@ class JetClass:
         # evolve width 
         self.length += self.v_advance * self.dt
         delta_energy = self.power_available * self.dt 
-        self.energy += delta_energy 
         self.mass += self.mdot * self.dt
-        self.E_B += (1.0 - self.kappa) * self.zeta * self.epsilon * delta_energy
 
         # decide whether we need to artifically set the aspect ratio or not
         if self.set_aspect:
@@ -1005,9 +1041,16 @@ class JetClass:
             self.set_aspect = False
             self.i = 1
             self.volume = 0.0
+            self.B = self.pressure_uniform = 0.0
         else:
             self.width += self.v_perp * self.dt
-            self.width = savgol_filter(self.width, 5,3)
+            #self.width[0] = self.width[1]
+            ilength = np.argmin(np.fabs(self.z - self.length))
+
+            # if self.length > self.ighost * self.dz * 10.0:
+            #     self.width[:self.ighost] = self.width[self.ighost]
+            if self.length > self.ighost * self.dz * 2.0:
+                self.width[self.ighost:] = savgol_filter(self.width[self.ighost:], 5,3)
             self.i += 1
 
         # find the point halfway up the lobe 
@@ -1015,13 +1058,13 @@ class JetClass:
         # self.half_width = self.width[np.argmin(np.fabs(self.z-(self.length*0.5)))]
 
         # find where the lobe ends and select all elements inside it
-        select_lobe = (self.z <= self.length)
+        select_lobe = (self.z <= self.length) 
 
         if np.sum(select_lobe) == 0: 
             self.half_width = 1.0
         else:
             # find the maximum width, divide by 2, then also multiply by two to get total width
-            self.half_width = np.max(self.width[select_lobe]) 
+            self.half_width = np.max(self.width[select_lobe * (self.z > 1.0)]) 
 
 
         # get the volume by integration 
@@ -1029,6 +1072,27 @@ class JetClass:
         self.volume = np.trapz(np.pi * (self.width[select_lobe]**2), x = self.z[select_lobe])
         dVdt = (self.volume - v_old) / self.dt
         self.density = self.mass / self.volume
+        dE_B = self.eps_b * delta_energy
+
+        dV = self.dV = (self.volume - v_old)
+        if self.set_aspect:
+            PdV_B = 0.0
+            PdV = 0.0
+        else:
+            PdV_B = dE_B * 0.5
+            PdV = delta_energy *  0.5
+            #PdV_B = np.min([(self.B**2) / 4.0 / np.pi * dV, dE_B * 0.5])
+            #PdV = np.min([(self.pressure_uniform * dV), delta_energy *  0.5])
+            #PdV_B = (self.B**2) / 4.0 / np.pi * dV
+            #PdV = (self.pressure_uniform * dV)
+            self.f_work_B = (self.B**2) / 4.0 / np.pi * dV / dE_B 
+            self.f_work = (self.pressure_uniform * dV) / delta_energy
+            #print ("RATIO:", PdV/delta_energy, PdV_B / ((1.0 - self.kappa) * self.zeta * self.epsilon * delta_energy))
+
+
+        self.energy += delta_energy - PdV 
+        self.E_B += dE_B - PdV_B 
+
 
         # work out magnetic field by finding B field internal energy 
         self.B = np.sqrt(self.E_B / self.volume * 8.0 * np.pi)
@@ -1050,7 +1114,9 @@ class JetClass:
 
         #self.R_escape = self.mean_escape_distance()
         # IMPROVE 
-        self.R_escape = self.volume ** (1./3.)
+        #self.R_escape = self.volume ** (1./3.)
+        self.R_escape = self.ellipse_r(self.length, self.half_width)
+
 
         # get escape and synchrotron timescales
         self.get_timescales()

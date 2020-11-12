@@ -7,7 +7,7 @@ from scipy.interpolate import interp1d
 import naima
 import astropy.units as u
 import subroutines as sub
-import os
+import os, sys
 import simulation as sim
 from mpi4py import MPI
 from itertools import product
@@ -22,7 +22,11 @@ my_rank = MPI.COMM_WORLD.Get_rank()     # The number/rank of this process
 my_node = MPI.Get_processor_name()      # Node where this MPI process runs
 
 
-
+# get name to save as from cmd line 
+if len(sys.argv)>1:
+    name = sys.argv[1]
+else:
+    name = None
 
 # Now we've set up the basic functions. Let's initialise our parameters for the variable jet history and initialise the tau_loss dictionary which stores the loss times for the different species (calculated using CRPropa).  
 
@@ -45,7 +49,7 @@ Length = int(Age / tbin)
 # time is in kyr, so convert to Myr
 times = np.arange ( 0, Length*tbin, tbin) 
 
-elem_temp = sim.get_elem_dict(fname = "abundances.txt", beta = 2)
+elem_temp = sim.get_elem_dict(beta = 2)
 elems = elem_temp["species"]
 tau_loss = dict()
 
@@ -70,10 +74,12 @@ for i in range(len(elems)):
 variable = dict()
 
 variable["betas"] = [2]
-variable["flux_scales"] = [1e44,1e45]
-variable["sigmas"] = [1.5,3]
-variable["seeds"] = [12,38,100,200]
+variable["flux_scales"] = [1e45]
+variable["sigmas"] = [1.5]
 variable["seeds"] = [38]
+variable["geometry"] = [4]
+variable["etaH"] = [0.3]
+#variable["seeds"] = [38]
 indices = list(variable.values())
 parameter_keys = variable.keys()
 parameter_values = list(product(*indices))
@@ -139,12 +145,15 @@ tinit = time_init
 
 for i in range(my_nmin, my_nmax):
     
-    BETA, flux_scale, SIGMA, seed = parameter_values[i]
-    print (seed)
+    BETA, flux_scale, SIGMA, seed, geo, etaH = parameter_values[i]
+    print (seed, geo, etaH)
+    eta = 1e-4
 
     # get the lognormal parameters
     #mu = np.log(flux_scale)
     lognorm_params = (SIGMA,0,np.exp(np.log(1)))
+
+    name = "ref_p{}_geo{}_etah{}".format(flux_scale, geo, etaH, eta)
     
     # paramaters for lc are lognorm parameters, PSD parameters, tbin and Length (Age is really number of points)
     lc = sim.get_lc(lognorm_params, PSD_params, tbin, Length, RandomSeed=seed)
@@ -161,8 +170,9 @@ for i in range(my_nmin, my_nmax):
 
     # NMAX 40,000 should limit array saves to under a GB in size
     ncr, escaping, lcr = sim.run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
-                                                elem=elem, plot_all=False, 
-                                                sigma=SIGMA, R0=1e9, NRES = 20, NMAX=30000, seed=seed)
+                                                elem=elem, plot_all=False, save_arrays = True,
+                                                sigma=SIGMA, R0=1e9, NRES = 20, NMAX=30000, seed=seed,
+                                                savename=name, tau_on=Age/MYR, eta_H=etaH, geometry=geo, eta=eta)
 
     # get approximate gamma ray luminosity around 10 GeV
     select = (energies > 1e10) * (energies < 2e10)
