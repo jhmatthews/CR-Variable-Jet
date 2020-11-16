@@ -700,8 +700,8 @@ class JetClass:
     def get_timescales(self):
         self.tsync_gev = 600.0 / 1e9 / unit.ev / (self.B**2)
         gyrofactor = 1.0
-        tesc_ref = gyrofactor * 10.0 * unit.myr * (self.R_escape / 100.0 / unit.kpc)**2 
-        self.tescape_1e19 = tesc_ref * (self.B / 1e-6)
+        tesc_ref = gyrofactor * 9.05 * unit.myr * (self.R_escape / 100.0 / unit.kpc)**2 
+        self.tescape_1e19 = tesc_ref * (self.B / 1e-5)
         # self.tsync_Ghz
 
 
@@ -1059,12 +1059,16 @@ class JetClass:
 
         # find where the lobe ends and select all elements inside it
         select_lobe = (self.z <= self.length) 
+        select_lobe_for_width =  select_lobe * (self.z/unit.kpc > 0.001)
 
-        if np.sum(select_lobe) == 0: 
+        if np.sum(select_lobe) < 22: 
             self.half_width = 1.0
+            self.half_width2 = 1.0
         else:
             # find the maximum width, divide by 2, then also multiply by two to get total width
-            self.half_width = np.max(self.width[select_lobe * (self.z > 1.0)]) 
+            self.half_width = np.max(self.width[select_lobe_for_width][20:])/2.0
+            iarg = len(self.width[select_lobe_for_width]) // 2
+            self.half_width2 = self.width[iarg]/2.0
 
 
         # get the volume by integration 
