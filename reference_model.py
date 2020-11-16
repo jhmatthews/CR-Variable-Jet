@@ -41,7 +41,7 @@ pl_index = 1
 
 # bend the power law at 1 Myr (1e-3 kyr^-1) and steeply decay it beyond that with index 20. 
 # A,v_bend,a_low,a_high,c = 1, 1e-3, pl_index, 10, 1
-PSD_params = (1, 1.0 * MYR, pl_index, 20, 0)
+PSD_params = (1, 10000, pl_index, 20, 0)
 tbin = 0.1 * MYR   # 100 kyr 
 Age = 100.0 * MYR
 Length = int(Age / tbin)
