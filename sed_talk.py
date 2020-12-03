@@ -21,7 +21,12 @@ from matplotlib import cm
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from matplotlib import gridspec
 
-set_cr_defaults()
+set_mod_defaults()
+
+class transform:
+	def __init__(self, trans_type="log"):
+		self.type = trans_type
+
 
 # def create_and_save_spectra(SIGMA, flux_scale, BETA, seed, nspectra=200):
 
@@ -99,7 +104,7 @@ def make_plots(savename="", nspectra=200, load=False):
 	nu0 = 8
 	nu1 = np.log10(1e12 / 4.13620e-15)
 	##frequencies = np.log
-	frequencies = np.logspace(nu0,nu1,300)
+	frequencies = np.logspace(nu0,nu1,500)
 	energies = np.logspace(7,14,3000)
 	#spectra = np.load("array_saves/syncspectra_beta{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, logflux,  SIGMA, seed))
 	#folder = "paper-figures-{}-p{}-s{}_q{}".format(seed, BETA, sigma, logflux)
@@ -112,15 +117,16 @@ def make_plots(savename="", nspectra=200, load=False):
 
 	nspectra = len(j.B)
 
-	NSPEC = 9
-	tuse = np.linspace(10,90,NSPEC)
+	NSPEC = 8
+	tuse = np.linspace(10,80,NSPEC)
 	NUSE = [np.argmin(np.fabs(j.time/unit.myr-t)) for t in tuse]
+	#NSPEC = len(NUSE)
 
 	cmap = cm.get_cmap('viridis')
 	colors = cmap(np.linspace(0,1,num=NUSE[-1]+1))
 	#NUSE = np.random.randint(nspectra, size=NSPEC)
 	#NUSE = np.linspace(50,nspectra-1,NSPEC).astype(int)
-	fig = plt.figure(figsize=(8,8))
+	fig = plt.figure(figsize=(8,10))
 	gs = gridspec.GridSpec(2, 1, height_ratios=[1, 3]) 
 	#ax1 = fig.add_subplot(211)
 	ax1 = fig.add_subplot(gs[1])
@@ -155,10 +161,10 @@ def make_plots(savename="", nspectra=200, load=False):
 			nu, f, fp, fic = get_gamera_spectrum(frequencies, energies, ncr[0,i,:], ncr[1,i,:], j.B[i], j.density[i]/unit.mprot)
 			nufnu = nu * f
 			ne_store[n] = ncr[0,i,:]
-			sed_store[n] = nu * f
+			sed_store[n] = nufnu
 		#ax2.loglog(nu, nu*f, alpha=0.5, c="C"+str(n))
 		# plt.loglog(nu * 4.13620e-15, nu*fp, ls="-.")
-		ax1.loglog(nu, nufnu, ls="-", c=colors[i], alpha=0.85)
+		ax1.plot(np.log10(nu), np.log10(nufnu), ls="-", c=colors[i], alpha=0.85)
 
 		n_to_plot = energies * energies * ne_store[n]
 		print (np.max(n_to_plot))
@@ -174,17 +180,21 @@ def make_plots(savename="", nspectra=200, load=False):
 		#ne_store[n] = ncr[0,i,:]
 		#sed_store[n] = nu * f
 
+	axtop = ax1.twiny()
+	axtop.set_xlim(np.log10(HEV) + 8, np.log10(HEV) + 25)
+	axtop.set_xlabel(r"$\log[E_\gamma$~(eV)]", fontsize=18)
 	# work out what the proxy frequencies and energies are and mark them
-	nu1 = 2.057e10 # 20 GHz 
-	nu2 = 0.44 * 1e6 / HEV 
-	ax1.vlines([nu1,nu2], 1e38,1e45, ls="-.", lw=1.5)
+	nu1 = np.log10(2e10) # 20 GHz 
+	nu2 = np.log10(0.44 * 1e6 / HEV)
+	ax1.vlines([nu1,nu2], 38,45, ls="-.", lw=1.5)
 	Eproxy = np.sqrt(H * MELEC * C * C * nu1 * 4e13 / 1e-5) / EV2ERGS
 
 	print (BOLTZMANN * 2.7 / EV2ERGS, Eproxy/1e6)
 
-	#if load == False:
-	#	np.save("array_saves/ne_store_{}.npy".format(savename))
-	#	np.save("array_saves/sed_store_{}.npy".format(savename))
+	if load == False:
+		np.save("array_saves/ne_store_{}.npy".format(savename), ne_store)
+		np.save("array_saves/sed_store_{}.npy".format(savename), sed_store)
+
 	t = j.time/unit.myr
 	# print (np.max(t), t[-1])
 	norm = matplotlib.colors.Normalize(vmin=t[0], vmax=t[-1])
@@ -201,29 +211,29 @@ def make_plots(savename="", nspectra=200, load=False):
 	cbar = plt.colorbar(mappable=mappable1, cax = axins1, shrink=1, orientation="horizontal")
 	cbar.set_label("$t$~(Myr)", fontsize=12)
 	#ax1.set_ylabel("$E^2 dN/dE$")
-	ax1.set_xlabel(r"$\nu$ (Hz)", fontsize=18)
-	ax1.set_ylabel(r"$\nu F_\nu$ (erg~s$^{-1}$)", fontsize=18)
+	ax1.set_xlabel(r"$\log [\nu$ (Hz)]", fontsize=18)
+	ax1.set_ylabel(r"$\log [\nu F_\nu$ (erg~s$^{-1}$)]", fontsize=18)
 	axins2.set_xlabel("$E$ (MeV)")
 	axins2.set_ylabel("$E^2 n(E)$")
 	#ax1.set_xlabel("$E$ (eV)")
-	ax1.set_ylim(1e38,1e45)
-	ax1.set_xlim(1e8,1e25)
-	ax2.set_xlabel("$t$~(Myr)", fontsize=14)
+	ax1.set_ylim(38,45)
+	ax1.set_xlim(8,25)
+	ax2.set_xlabel("$t$~(Myr)", fontsize=16)
 	ax2.set_ylabel(r"$\log[Q_j~(\mathrm{erg~s}^{-1})]$", fontsize=16)
 	ax2.set_xlim(0,np.max(j.time/unit.myr))
 	ax2.set_ylim(43,47)
 	axins2.set_xlim(10,1e6)
 	axins2.set_ylim(1e-4,10)
-	plt.subplots_adjust(top=0.98, bottom=0.1, right=0.98, hspace=0.2, wspace=0.2)
+	plt.subplots_adjust(top=0.98, bottom=0.07, right=0.98, hspace=0.35, wspace=0.35, left=0.09)
 
 	xray_kev = 1000.0 / 4.13620e-15
-	ax1.plot([2*xray_kev, 20*xray_kev], [1e39,1e39], alpha=0.3, lw=15)
-	ax1.text(5*xray_kev, 3e38, "X-ray\n2-20 keV", c="C0", horizontalalignment='center')
-	ax1.plot([2e7/4.13620e-15, 3e11/4.13620e-15], [1e39,1e39], alpha=0.3, lw=15)
-	ax1.text(9e8/4.13620e-15, 3e38, "Fermi LAT\n20MeV-300 GeV", c="C1", horizontalalignment='center')
-	ax1.plot([1.44e8,5e9], [1e39,1e39], alpha=0.3, lw=15)
-	ax1.text(1e9, 3e38, "Radio\n0.1-5 GHz", c="C2", horizontalalignment='center')
-	ax1.text(1.4e9, 3e44, "Broadband SED", fontsize=14)
+	ax1.plot([np.log10(2*xray_kev), np.log10(20*xray_kev)], [39,39], alpha=0.3, lw=15)
+	ax1.text(np.log10(5*xray_kev), 38.5, "X-ray\n2-20 keV", c="C0", horizontalalignment='center', fontsize=14)
+	ax1.plot([np.log10(2e7/4.13620e-15), np.log10(3e11/4.13620e-15)], [39,39], alpha=0.3, lw=15)
+	ax1.text(np.log10(9e8/4.13620e-15), 38.5, "Fermi LAT\n20MeV-300 GeV", c="C1", horizontalalignment='center', fontsize=14)
+	ax1.plot([np.log10(1.44e8),np.log10(5e9)], [39,39], alpha=0.3, lw=15)
+	ax1.text(9, 38.5, "Radio\n0.1-5 GHz", c="C2", horizontalalignment='center', fontsize=14)
+	ax1.text(np.log10(1.4e9), 44.5, "Broadband SED", fontsize=14)
 	axins2.text(15,1e-3, "$e^-$ spectrum", fontsize=12)
 
 	plt.savefig("paper-figures-{}/sed.png".format(savename), dpi=300)
@@ -232,6 +242,6 @@ if __name__ == "__main__":
 
 	savenames = [f for f in os.listdir("array_saves") if "dim_ref_p1e+45_geo4_etah0.3" in f]
 
-	for savename in savenames[1:]:
+	for savename in savenames:
 		#create_and_save_spectra(sigma, power, beta, seed, nspectra=n)
 		make_plots(savename[4:-4], nspectra=1500, load=False)
