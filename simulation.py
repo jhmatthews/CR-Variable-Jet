@@ -13,45 +13,6 @@ import msynchro
 from collections import Mapping, Container
 from scipy.special import ellipe
 
-def deep_getsizeof(o, ids): 
-    """Find the memory footprint of a Python object
-
-    This is a recursive function that drills down a Python object graph
-    like a dictionary holding nested dictionaries with lists of lists
-    and tuples and sets.
-
-    The sys.getsizeof function does a shallow size of only. It counts each
-    object inside a container as pointer only regardless of how big it
-    really is.
-
-    :param o: the object
-    :param ids:
-    :return:
-    """
-    d = deep_getsizeof
-    if id(o) in ids:
-        return 0
-
-    r = sys.getsizeof(o)
-    ids.add(id(o))
-
-    if isinstance(o, str) or isinstance(0, str):
-        return r
-
-    if isinstance(o, Mapping):
-        return r + sum(d(k, ids) + d(v, ids) for k, v in o.iteritems())
-
-    if isinstance(o, Container):
-        return r + sum(d(x, ids) for x in o)
-
-    return r
-
-def get_memory_usage(objects):
-    sizes = np.zeros(len(objects))
-    for i,obj in enumerate(objects):
-        sizes[i] = deep_getsizeof(obj, set())
-
-    return (sizes)
 
 def get_elem_dict(fname=None, beta=2):
     if fname == None:
@@ -65,47 +26,6 @@ def get_elem_dict(fname=None, beta=2):
     elem["species"] = name
 
     return (elem)
-
-class my_powerlaw:
-    '''
-    container for generating random numbers from a powerlaw with slope < 1. 
-    For a power of form x**-n, with n>1, from xmin to xmax, the resulting
-    CDF can be shown to take the analytic form
-
-        CDF(x) = (xmin^alpha - x^alpha) / (xmin^alpha - xmax^alpha)
-
-    where alpha = 1-n. Thus, if z is a random number in range (0,1),
-    then a random variable rv can be found by inverting this expression,
-    i.e. rv = [z * (b^alpha - a^alpha) + a^alpha] ^ (1/alpha).
-
-    This is embedded in a class so an individual function can be passed without
-    additional arguments, the function rvs() generates the actual random numbers
-    similarly to scipy.stats distribution syntax.
-    '''
-    def __init__(self, n=1.2, xmin=3.5, xmax=10.0):
-        '''
-        initialise the powerlaw parameters
-        '''
-        if n <= 1:
-            raise ValueError("n must be > 1!")
-        self.n = n
-        self.alpha = 1.0 - self.n
-        self.xmin = xmin 
-        self.xmax = xmax 
-
-    def rvs(self, size=None):
-        '''
-        generate (size) random variables. if size is None, 
-        generate a single float.
-        '''
-
-        # note that np.random.random generates a single float if size==None
-        z = np.random.random(size=size)
-
-        term1 = z * (self.xmax ** self.alpha)
-        term2 = (1. - z) * (self.xmin ** self.alpha)
-        rv = (term1 + term2) ** (1.0 / self.alpha)
-        return (rv)
 
 def cooling_rate(gammas, B, B_CMB=3.24e-6):
     '''
@@ -232,8 +152,8 @@ def get_source_term(energies, jet, part, BETA, Q0, Rmax, frac_elem, z_elem, j):
         #if jet.set_aspect:
         #    Rcutoff = 1e12
         #else:
-        Rcutoff = 1e12
-        Rmax = 1e12
+        Rcutoff = 1e14
+        Rmax = 1e14
 
         R0 = 1e6
         meanZ = frac = z = 1.0
@@ -318,7 +238,7 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     '''
 
     # create energy bins for ions and electrons
-    elec_e_edges = np.logspace(7, 14, energy_params[2] + 1)
+    elec_e_edges = np.logspace(7, 15, energy_params[2] + 1)
     elec_energies = 0.5 * (elec_e_edges[1:] + elec_e_edges[:-1])
     prot_e_edges = np.logspace(14, 21, energy_params[2] + 1)
     prot_energies = 0.5 * (prot_e_edges[1:] + prot_e_edges[:-1])
@@ -346,15 +266,18 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
 
     # arrays to store the stored and escaping CRs for every time bin and every ion
     # these get returned by the function
-    NWRITE = (NMAX // NRES)
+    iwrite = -1
+    dt_save = 0.1 * unit.myr
+    idim_save = 5
+    # max time is in Myrs 
+    TMAX = tau_on * unit.myr
+    LMAX = 300.0 
+    NWRITE = int((TMAX // dt_save) + 1)
     ncr_time = np.zeros( (len(species), NWRITE, N_energies), dtype=float_dtype)
     escaping_time = np.zeros( (len(species), NWRITE, N_energies), dtype=float_dtype)
     nsize = len(species) * NWRITE * N_energies
     print ("Size of spectral arrays is {:8.4e}, approx {}MB:".format(nsize, nsize * sys.getsizeof(float_dtype(1.0))/1e6))
 
-    # max time is in Myrs 
-    TMAX = tau_on * unit.myr
-    LMAX = 300.0 
 
     # initialise the jet 
     jet = JetClass(lc, env="UP", zmax = LMAX, nz = int (LMAX * 100))
@@ -366,7 +289,7 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     jet_store = JetStore(jet.rho_j, prot_e_edges, elec_e_edges)
 
     if save_arrays:
-        dimensions = np.zeros( (2, NWRITE, len(jet.z)), dtype=np.float64)
+        dimensions = np.zeros( (2, NWRITE//idim_save, len(jet.z)), dtype=np.float64)
 
     i = 0
     failure = False
@@ -375,23 +298,32 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
     pid = os.getpid()
     ps = psutil.Process(pid)
 
-    sizes = get_memory_usage( [jet, jet_store])
+    #sizes = get_memory_usage( [jet, jet_store])
     print ("Starting:")
-    print (sizes)
+    #print (sizes)
     #NMAX = 1000
 
     while jet.length < (LMAX * unit.kpc) and i < NMAX and jet.time < TMAX and failure == False:
 
-        if (i % NRES) == 0:
-            write = True
-            iwrite = (i // NRES)
-            info = ps.memory_info()
-            print ("Mem:", i, info[0] / 1e6, info[1] / 1e6)
-            #sizes = get_memory_usage( [jet, jet_store])
-            #print (sizes)
-
+        if (jet.time  >= ((iwrite+1) * dt_save)):
+            write = True  
+            #print ("Writing:", iwrite, jet.time/unit.myr, jet.length/unit.kpc)
+            iwrite += 1
+            if iwrite % 5 == 0:
+                print ("Writing:", iwrite, jet.time/unit.myr, jet.length/unit.kpc)
         else:
             write = False
+
+        # if (i % NRES) == 0:
+        #     write = True
+        #     iwrite = (i // NRES)
+        #     info = ps.memory_info()
+        #     print ("Mem:", i, info[0] / 1e6, info[1] / 1e6)
+        #     #sizes = get_memory_usage( [jet, jet_store])
+        #     #print (sizes)
+
+        # else:
+        #     write = False
 
         # advance the jet solution, but check for errors and raise exceptions if necessary 
         try:
@@ -497,9 +429,10 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
 
         if write: 
             jet_store.Update(jet)
-            if save_arrays:
-                dimensions[0,iwrite,:] = jet.z
-                dimensions[1,iwrite,:] = jet.width
+            # save dimension arrays less often!
+            if save_arrays and ((iwrite % idim_save) == 0):
+                dimensions[0,iwrite//idim_save,:] = jet.z
+                dimensions[1,iwrite//idim_save,:] = jet.width
 
         i += 1
 
@@ -528,25 +461,6 @@ def run_jet_simulation(energy_params, flux_scale, BETA, lc, tau_loss,
 
 
     return (ncr_time, escaping_time, 0.0)
-
-# class units:
-#     def __init__(self):
-#         self.kpc = 3.086e21
-#         self.pc = 3.086e18
-#         self.c = 2.997925e10
-#         self.yr = 3.1556925e7
-#         self.myr = 3.1556925e13
-#         self.kyr = 3.1556925e10
-#         self.radian = 57.29577951308232
-#         self.msol = 1.989e33
-#         self.mprot = 1.672661e-24
-#         self.ev = 1.602192e-12
-#         self.kb = 1.38062e-16
-#         self.h = 6.6262e-27
-#         self.g = 6.670e-8
-
-# # class to use for units
-# unit = units()
 
 class JetStore:
     def __init__(self, eta, prot_e_edges, elec_e_edges):
@@ -652,7 +566,7 @@ class JetClass:
         self.dz = zmax * unit.kpc / (nz  - 1)
         self.time = 0.0
         self.gamma = 4./3.
-        self.eps_b = 0.075 
+        self.eps_b = 0.1
         self.eps_e = 0.15 
         self.eps_cr = 0.15 
         self.kappa = self.eps_cr / self.eps_e
@@ -667,7 +581,7 @@ class JetClass:
         self.pressure_uniform = 0.0
         self.hs_pressure = 0.0
         self.gmm = 2.0
-        self.mu_weight = 0.62 # solar abundances, ionized 
+        self.mu_weight = 0.62       # solar abundances, ionized 
         self.H0 = 70.0
         self.geometry_factor = 1.0
         self.rel_advance = True
@@ -675,7 +589,7 @@ class JetClass:
         self.f_work = 1   
         self.f_work_B = 1.0 
         self.E_B = 0.0
-        self.power_available = self.power 
+        self.power_available = self.power * 0.5
         self.ighost = 5
         self.v_h = self.v_h0 = 0.0
 
@@ -793,8 +707,6 @@ class JetClass:
 
     def UniversalProfile(self, r):
         pressure, temperature, density, R500 = universal_profile(r, self.M500_msol, H0=self.H0)
-        #density = self.rho_j 
-        # HACK 
         return (density, pressure)
 
 
@@ -939,6 +851,7 @@ class JetClass:
             print ("error in gamma!", gmm, gmm**(-2.0)) 
 
         return (beta * unit.c)
+
     def gamma_from_v(self, v):
         beta = v/unit.c
         return (1-np.sqrt(1-beta**2))
@@ -947,7 +860,6 @@ class JetClass:
         v = self.v_from_gamma(gmm)
         Q = gmm * (gmm - 1.) * area * rho * unit.c * unit.c * v 
         return (Q)
-
 
 
     def set_power(self, time):
@@ -960,20 +872,6 @@ class JetClass:
         self.mdot = self.gmm * self.rho_j * self.v_j * self.area * unit.mprot
         self.power_available = self.power
 
-    def mean_escape_distance(self):
-        '''
-        get the mean escape distance by working out the distance to 
-        every point on the lobe edge from the centre of mass  
-        '''
-        zcm = self.centre_of_mass()
-
-        # distance to one lobe
-        dist1 = np.sqrt(self.width**2 + (self.z-zcm)**2)
-
-        # distance to second lobe 
-        dist2 = np.sqrt(self.width**2 + (self.z+zcm)**2)
-
-        return (0.5 * (np.mean(dist1) + np.mean(dist2)))
 
     def set_lobe_pressure(self):
         P0 = self.pressure_uniform
@@ -1116,9 +1014,7 @@ class JetClass:
         # advance time 
         self.time += self.dt
 
-        #self.R_escape = self.mean_escape_distance()
-        # IMPROVE 
-        #self.R_escape = self.volume ** (1./3.)
+        #
         self.R_escape = self.ellipse_r(self.length, self.half_width)
 
 

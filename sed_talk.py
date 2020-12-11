@@ -102,10 +102,10 @@ def get_gamera_spectrum(nu, energies, ne, nprot, B, density):
 def make_plots(savename="", nspectra=200, load=False):
 
 	nu0 = 8
-	nu1 = np.log10(1e12 / 4.13620e-15)
+	nu1 = np.log10(1e14 / 4.13620e-15)
 	##frequencies = np.log
-	frequencies = np.logspace(nu0,nu1,500)
-	energies = np.logspace(7,14,3000)
+	frequencies = np.logspace(nu0,nu1,400)
+	energies = np.logspace(7,15,3000)
 	#spectra = np.load("array_saves/syncspectra_beta{:.1f}q{:.1f}sig{:.1f}seed{:d}.npy".format(BETA, logflux,  SIGMA, seed))
 	#folder = "paper-figures-{}-p{}-s{}_q{}".format(seed, BETA, sigma, logflux)
 	
@@ -217,22 +217,22 @@ def make_plots(savename="", nspectra=200, load=False):
 	axins2.set_ylabel("$E^2 n(E)$")
 	#ax1.set_xlabel("$E$ (eV)")
 	ax1.set_ylim(38,45)
-	ax1.set_xlim(8,25)
+	ax1.set_xlim(8,28)
 	ax2.set_xlabel("$t$~(Myr)", fontsize=16)
 	ax2.set_ylabel(r"$\log[Q_j~(\mathrm{erg~s}^{-1})]$", fontsize=16)
 	ax2.set_xlim(0,np.max(j.time/unit.myr))
 	ax2.set_ylim(43,47)
-	axins2.set_xlim(10,1e6)
+	axins2.set_xlim(10,1e9)
 	axins2.set_ylim(1e-4,10)
 	plt.subplots_adjust(top=0.98, bottom=0.07, right=0.98, hspace=0.35, wspace=0.35, left=0.09)
 
 	xray_kev = 1000.0 / 4.13620e-15
 	ax1.plot([np.log10(2*xray_kev), np.log10(20*xray_kev)], [39,39], alpha=0.3, lw=15)
-	ax1.text(np.log10(5*xray_kev), 38.5, "X-ray\n2-20 keV", c="C0", horizontalalignment='center', fontsize=14)
+	ax1.text(np.log10(5*xray_kev), 38.4, "X-ray\n2-20 keV", c="C0", horizontalalignment='center', fontsize=14)
 	ax1.plot([np.log10(2e7/4.13620e-15), np.log10(3e11/4.13620e-15)], [39,39], alpha=0.3, lw=15)
-	ax1.text(np.log10(9e8/4.13620e-15), 38.5, "Fermi LAT\n20MeV-300 GeV", c="C1", horizontalalignment='center', fontsize=14)
+	ax1.text(np.log10(9e8/4.13620e-15), 38.4, "Fermi LAT\n20MeV-300 GeV", c="C1", horizontalalignment='center', fontsize=14)
 	ax1.plot([np.log10(1.44e8),np.log10(5e9)], [39,39], alpha=0.3, lw=15)
-	ax1.text(9, 38.5, "Radio\n0.1-5 GHz", c="C2", horizontalalignment='center', fontsize=14)
+	ax1.text(9.2, 38.4, "Radio\n0.1-5 GHz", c="C2", horizontalalignment='center', fontsize=14)
 	ax1.text(np.log10(1.4e9), 44.5, "Broadband SED", fontsize=14)
 	axins2.text(15,1e-3, "$e^-$ spectrum", fontsize=12)
 

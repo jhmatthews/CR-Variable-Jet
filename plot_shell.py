@@ -14,12 +14,8 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 set_plot_defaults()
 
-BETA = 2
-flux_scale = 1e44
-SIGMA = 1.5
-seed = 38
-
-suffix = sys.argv[1]
+#suffix = sys.argv[1]
+suffix = "ref_p1e+45_geo4_etah0.3"
 #suffix = "beta{:.1f}q{:.1f}sig{:.1f}seed{:d}".format(BETA, np.log10(flux_scale),  SIGMA, seed)
 fname = "array_saves/dim_{}.npz".format(suffix)
 fname_jet = "array_saves/jetstore_{}.pkl".format(suffix)
@@ -32,23 +28,30 @@ print ("FRAMES:", len(dimensions[0,:,0])/DELTA)
 NPTS = len(dimensions[0,:,0])
 print (NPTS)
 
-N = 1500
+#N = 200
+tmax = np.max(jet.time/unit.myr)
+print (tmax)
+imax = (tmax  / 0.1 / 5)
+print (imax)
+N_use = 180
 
-N_use = 1500
-cmap = cm.get_cmap('Spectral_r')
+
+cmap = cm.get_cmap('viridis')
 colors = cmap(np.linspace(0,1,num=N_use))
 #colors2 = 
 
 plt.figure(figsize=(10,5))
-for N in np.arange(0,N_use,50):
+for N in np.arange(0,N_use,DELTA):
 
-	print (N)
+	print (N, N * 0.5)
 	x = dimensions[1,N,:]/1000.0/PARSEC
 	z = dimensions[0,N,:]/1000.0/PARSEC
 	x[:20] = x[20]
 	select = (x>0.01)
 	xx = x[select]
 	zz = z[select]
+
+	#print (xx, zz)
 
 	marker= "o"
 	marker=None
@@ -59,7 +62,8 @@ for N in np.arange(0,N_use,50):
 	plt.plot(x, -z, marker=marker, c=colors[N])
 	plt.plot(-x, -z, marker=marker, c=colors[N])
 
-
+#plt.show()
+print (x)
 width = np.max(x)
 length = np.max(z)
 
@@ -75,7 +79,7 @@ plt.xlabel("$z$ (kpc)", fontsize=16)
 
 
 t = jet.time/unit.myr
-norm = matplotlib.colors.Normalize(vmin=t[0], vmax=t[N])
+norm = matplotlib.colors.Normalize(vmin=t[0], vmax=t[N*5])
 mappable1 = matplotlib.cm.ScalarMappable(norm=norm, cmap=cmap )
 
 ax1 = plt.gca()
@@ -92,6 +96,7 @@ xx,yy = np.meshgrid(x,y)
 r = np.sqrt(xx**2 + yy**2)
 _, P = jet.jet.profile(r * unit.kpc)
 #plt.scatter(xx,yy)
+print (np.nanmax(P))
 mappable2 = ax1.pcolormesh(xx,yy,np.log10(P/np.nanmax(P)), cmap="binary", vmax=0, vmin=-1.5)
 #plt.colorbar()
 axins1 = inset_axes(ax1,width="50%",  height="15%", loc='lower right', bbox_to_anchor=(.45, .15, .4, .4), bbox_transform=ax1.transAxes)
@@ -107,11 +112,11 @@ print (a,b)
 x = np.linspace(-a,a,1000)
 y = np.sqrt((1 - (x**2/a**2)) * b**2)
 print (a,b,y)
-ax1.plot(x,y, ls="--", c="C0")
-ax1.plot(x,-y, ls="--", c="C0")
-ax1.text(-250,60,r"$\frac{{z^2}}{{L^2}} + \frac{{x^2}}{{R^2}}=1$ for $\tau={:d}$Myr".format(int(t[N])), color="C0", fontsize=14)
+ax1.plot(x,y, ls="--", c="C3")
+ax1.plot(x,-y, ls="--", c="C3")
+ax1.text(-250,60,r"$\frac{{z^2}}{{L^2}} + \frac{{x^2}}{{R^2}}=1$ for $t={:d}$Myr".format(int(t[N*5])), color="C3", fontsize=14)
 
-plt.savefig("shell_{}.png".format(suffix), dpi=300)
+plt.savefig("shell.png".format(suffix), dpi=300)
 
 plt.figure()
 
